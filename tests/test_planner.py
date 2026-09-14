@@ -1,0 +1,151 @@
+"""The planner, checked against arithmetic done by hand.
+
+Expected figures here are worked out on paper from the §4.7 fixture, not copied
+from a previous run. A snapshot test would happily lock in a wrong answer.
+"""
+
+from datetime import date
+
+from server.domain.events import Fact, FactCorrected, FactRecorded, FactRetracted
+from server.domain.money import from_rupees
+from server.domain.planner import CUSHION, _drop_sequence, cost_of_delay, plan
+from server.domain.state import fold
+from tests.golden import AS_OF, GOLDEN, TIMING_TRAP, fact
+
+
+def golden_plan():
+    return plan(fold(GOLDEN), AS_OF)
+
+
+def test_window_is_thirty_days_from_as_of():
+    outcome = golden_plan()
+    assert len(outcome.ledger) == 30
+    assert outcome.ledger[0].on == date(2026, 9, 1)
+    assert outcome.ledger[-1].on == date(2026, 9, 30)
+
+
+def test_paying_everything_on_time_runs_out_on_the_eighteenth():
+    # Salary and spouse income total 50,000 with 2,200 in hand against 60,200 out.
+    # The balance survives rent, the EMI and the school fee, and breaks on the
+    # first credit-card minimum.
+    outcome = golden_plan()
+    assert outcome.baseline_gap == from_rupees(8_000)
+    assert outcome.first_shortfall_on == date(2026, 9, 18)
+
+
+def test_cutting_every_optional_rupee_still_leaves_him_five_thousand_short():
+    outcome = plan(fold([*GOLDEN, FactRetracted("optional")]), AS_OF)
+    assert outcome.baseline_gap == from_rupees(5_000)
+
+
+def test_the_ladder_order_is_pinned():
+    # The decision itself, not a consequence of it. Optional spending, then the
+    # unsecured loan, then card minimums cheapest-to-delay first, then the
+    # secured EMI. Changing this line should require changing this test.
+    order = [f.fact_id for f in _drop_sequence(fold(GOLDEN).planning_facts())]
+    assert order == ["optional", "loan", "cc2", "cc1", "scooter"]
+
+
+def test_the_ladder_cuts_optional_spending_then_names_the_personal_loan():
+    outcome = golden_plan()
+    assert [a.fact_id for a in outcome.cuts] == ["optional"]
+    assert [a.fact_id for a in outcome.unpaid] == ["loan"]
+    assert outcome.unpaid[0].amount == from_rupees(9_500)
+    assert outcome.unpaid[0].on == date(2026, 9, 15)
+
+
+def test_an_unmet_obligation_is_infeasible_however_much_is_left_over():
+    outcome = golden_plan()
+    assert outcome.status == "infeasible"
+    # 3,000 cut and a 9,500 EMI unpaid against an 8,000 gap leaves 4,500 spare.
+    # The month clears on paper and the obligation is still not met, so the
+    # leftover must never soften the verdict.
+    assert outcome.closing == from_rupees(4_500)
+    assert outcome.shortfall == 0
+
+
+def test_essentials_and_the_secured_emi_are_never_sacrificed():
+    outcome = golden_plan()
+    touched = {a.fact_id for a in outcome.cuts + outcome.unpaid}
+    assert touched.isdisjoint({"rent", "school", "household", "scooter"})
+
+
+def test_card_minimums_outrank_the_unsecured_loan():
+    outcome = golden_plan()
+    assert {"cc1", "cc2"}.isdisjoint({a.fact_id for a in outcome.unpaid})
+    # Same amount, different instrument: missing the card costs more, so the card
+    # is protected and the loan is what gives way.
+    card = Fact("a", "credit_card", "card", from_rupees(2_100))
+    loan = Fact("b", "loan_emi", "loan", from_rupees(2_100))
+    assert cost_of_delay(card) > cost_of_delay(loan)
+
+
+def test_the_ledger_adds_up_to_the_closing_balance():
+    outcome = golden_plan()
+    moved = sum(e.amount for row in outcome.ledger for e in row.entries)
+    assert outcome.opening + moved == outcome.closing
+    assert outcome.lowest == min(row.closing for row in outcome.ledger)
+
+
+def test_a_spread_expense_lands_on_every_day_and_totals_exactly():
+    outcome = golden_plan()
+    household = [e for row in outcome.ledger for e in row.entries if e.fact_id == "household"]
+    assert len(household) == 30
+    assert sum(e.amount for e in household) == -from_rupees(11_000)
+
+
+def test_the_plan_labels_what_it_assumed():
+    outcome = golden_plan()
+    assert any("Spouse income" in note for note in outcome.assumptions)
+
+
+def test_totals_can_look_healthy_while_the_dates_do_not_work():
+    state = fold(TIMING_TRAP)
+    income = sum(f.amount for f in state.of_kind("income", "cash_on_hand"))
+    outgoings = sum(f.amount for f in state.of_kind("essential"))
+    assert income > outgoings  # a monthly-total model stops here and says fine
+
+    outcome = plan(state, AS_OF)
+    assert outcome.status == "infeasible"
+    assert outcome.first_shortfall_on == date(2026, 9, 5)
+    assert outcome.shortfall == from_rupees(24_000)
+
+
+def test_the_same_money_arriving_earlier_solves_it():
+    outcome = plan(fold([*TIMING_TRAP, FactCorrected("wages", day=1)]), AS_OF)
+    assert outcome.status == "feasible"
+    assert outcome.shortfall == 0
+
+
+def test_a_comfortable_month_is_feasible():
+    log = [
+        fact("cash", "cash_on_hand", "Cash on hand", 50_000),
+        fact("salary", "income", "Salary", 50_000, day=1),
+        fact("rent", "essential", "Rent", 10_000, day=5),
+    ]
+    assert plan(fold(log), AS_OF).status == "feasible"
+
+
+def test_clearing_the_month_on_fumes_is_tight_not_feasible():
+    log = [
+        fact("salary", "income", "Salary", 10_000, day=1),
+        fact("rent", "essential", "Rent", 9_500, day=5),
+    ]
+    outcome = plan(fold(log), AS_OF)
+    assert outcome.lowest < CUSHION
+    assert outcome.status == "tight"
+
+
+def test_an_amount_we_do_not_know_is_left_out_rather_than_guessed():
+    log = [*GOLDEN, FactRecorded(Fact("gas", "essential", "Gas cylinder", day=12))]
+    assert plan(fold(log), AS_OF).closing == golden_plan().closing
+
+
+def test_an_expense_with_no_date_is_placed_at_the_worst_point():
+    log = [
+        fact("salary", "income", "Salary", 10_000, day=20),
+        fact("mystery", "essential", "Repair bill", 6_000),
+    ]
+    outcome = plan(fold(log), AS_OF)
+    assert outcome.first_shortfall_on == date(2026, 9, 1)
+    assert any("no date given" in note for note in outcome.assumptions)
