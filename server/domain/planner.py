@@ -298,7 +298,12 @@ def _status(
 def _assumptions(facts: tuple[Fact, ...], gave_way: list[Fact]) -> tuple[str, ...]:
     notes = []
     for fact in facts:
-        if fact.amount is not None and fact.day is None and not fact.spread:
+        undated = fact.amount is not None and fact.day is None and not fact.spread
+        # Cash on hand is the opening balance, not a payment waiting for a date:
+        # `plan` never schedules it, so saying it was placed anywhere is false —
+        # and it is a sentence the assistant reads out. An unconfirmed *amount*
+        # of cash is still worth flagging, which is why only this note is skipped.
+        if undated and fact.kind != "cash_on_hand":
             notes.append(f"{fact.label}: no date given, so it is placed at the worst point.")
         if fact.amount_bounds is not None:
             notes.append(f"{fact.label}: planned on a figure that is not yet confirmed.")

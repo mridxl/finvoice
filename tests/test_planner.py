@@ -211,3 +211,12 @@ def test_an_arrangement_is_left_unused_when_the_month_already_clears():
     outcome = plan(fold(log), AS_OF)
     assert outcome.arranged == ()
     assert outcome.status == "feasible"
+
+
+def test_only_a_payment_with_no_date_is_called_out_as_placed_at_the_worst_point():
+    # Cash on hand has no date because it is the opening balance, not because
+    # anyone forgot to say one — it is never placed on a day at all. An undated
+    # bill genuinely is placed at its worst point, and still says so.
+    log = [*GOLDEN, fact("insurance", "essential", "Insurance premium", 3_000)]
+    placed = [n for n in plan(fold(log), AS_OF).assumptions if "worst point" in n]
+    assert placed == ["Insurance premium: no date given, so it is placed at the worst point."]
