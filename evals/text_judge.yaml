@@ -1,6 +1,9 @@
 # Shared judge block. Text modality: the bot's LLM output is judged directly, so
 # no TTS is synthesised and no STT runs. Seconds per scenario, and no audio cost.
+#
+# The factory follows LLM_PROVIDER, so the judge moves with the bot. No model is
+# named here on purpose — see evals/judge.py for why the yardstick does not track
+# LLM_MODEL.
 modality: text
 eval:
-  factory: evals.judge.openai
-  model: gpt-5-mini
+  factory: evals.judge.from_env
