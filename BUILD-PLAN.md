@@ -100,18 +100,21 @@ finvoice/
 
   server/
     main.py                  # FastAPI: static, /api/connect, session registry
-    session.py               # one call = one Session; owns the log + bot task
+    config.py                # env -> frozen Config; the only clock read
+    session.py               # one call = one Session; owns the log + card pushes
     bot.py                   # build_pipeline(transport, session) -> Pipeline
+    eval_bot.py              # the same pipeline over the eval transport
     tools.py                 # direct functions the LLM may call
     prompt.py                # system prompt
     providers.py             # STT/TTS/LLM factory behind env switches
     domain/
       money.py               # Money = int paise. No floats, anywhere.
-      events.py              # event types + reducer
-      state.py               # FinancialState
+      speech.py              # how a date is said out loud
+      events.py              # event types
+      state.py               # FinancialState + the fold over the log
       planner.py             # 30-day simulation + prioritisation   <- the core
       gaps.py                # sensitivity-ranked information gaps
-      cards.py               # selectors: (state, plan) -> cards
+      cards.py               # selectors: (state, plan, gaps) -> cards
 
   web/
     src/
@@ -121,11 +124,14 @@ finvoice/
       useSession.ts          # RTVI client + onServerMessage -> card state
 
   evals/
+    suite.yaml               # spawns a bot per scenario; one command
+    judge.py                 # the judge LLM, so no key sits in a scenario
     scenarios/*.yaml         # pipecat eval run
   tests/
     test_planner.py          # deterministic, no LLM
     test_events.py           # corrections, conflicts, folds
     test_gaps.py             # ranking behaviour
+    test_tools.py            # the model's API, exercised without a model
 ```
 
 ---
@@ -306,18 +312,40 @@ Direct functions (Pipecat derives the schema from signature + docstring). This i
 LLM's entire numeric API.
 
 ```
-record_money_fact(kind, label, amount_rupees, day_of_month, certainty)
+record_money_fact(kind, label, amount_rupees?, day_of_month?,
+                  amount_low_rupees?, amount_high_rupees?,
+                  day_earliest?, day_latest?, spread?, secured?)
 correct_fact(fact_id, amount_rupees?, day_of_month?)
-mark_unknown(kind, label)
+retract_fact(fact_id, reason?)
 flag_conflict(fact_ids, note)
 resolve_conflict(conflict_id, chosen_fact_id)
 record_lender_answer(fact_id, accepts_rupees)   # only after the user reports one
-compute_plan()          -> structured plan for the model to narrate
+compute_plan()          -> the plan, in words, for the model to narrate
 open_questions()        -> ranked gaps
 ```
 
 Note what is absent: nothing that computes. `compute_plan` returns a computed result; it
 does not accept one.
+
+**Nothing comes back as digits either.** Every amount leaves a tool as words — "nine
+thousand five hundred rupees" — so there is no figure in the model's context to round,
+restate or quietly adjust, and what it reads aloud is what the planner worked out. Digits
+go to the cards, which the browser renders and never totals. That makes the first rule
+structural rather than prompted: a tool result the model could do arithmetic on does not
+exist. The exception is the user's own words — a label like "Credit card 2" comes back as
+they said it.
+
+Three departures from the first draft of this list, each because Phase 1 settled the
+question differently:
+
+- **`certainty` is not an argument.** It is derived in `events.py` from whether bounds are
+  present, so a tool that accepted it could contradict the data beside it. The model
+  supplies the range it heard and the certainty follows.
+- **`mark_unknown` is gone.** `record_money_fact` with no `amount_rupees` *is* an unknown,
+  and `gaps.py` already ranks it. One tool with one meaning beats two the model has to
+  choose between.
+- **`retract_fact` is new.** "Forget the gym, I cancelled it" is an ordinary thing to say,
+  `FactRetracted` already existed, and without a tool it was unreachable code.
 
 All handlers are in-memory Python — an append to a list, and a 30-day loop over a few
 dozen items. Sub-millisecond. Because tool calls are effectively free, the agent
@@ -344,8 +372,16 @@ fixture, including the infeasible outcome and the conflict.
 **Exit:** `pytest` green; the fixture produces a plan you can check by hand.
 
 ### Phase 2 — Agent in text mode
-`build_pipeline(transport)`, tools, prompt. Run under Pipecat's **eval transport**
-(`-t eval`) — text in, text out, no STT/TTS cost, seconds per run.
+`build_pipeline(transport, session)`, tools, prompt. Run under Pipecat's **eval
+transport** — text in, text out, TTS skipped and no audio synthesised, seconds per run.
+
+```bash
+uv run python -m pipecat.evals suite evals/suite.yaml
+```
+
+`python -m`, not the `pipecat` script: the scenarios' judge is `evals.judge`, in this
+repo, and only `-m` puts the working directory on the import path.
+
 **Exit:** a full typed conversation records facts, handles a correction, and produces a
 plan. This is where prompt iteration happens; do not move on until it is solid.
 

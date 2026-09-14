@@ -5,9 +5,9 @@ loans, income landing on different dates, and usually less money than the month 
 
 Built on [Pipecat](https://pipecat.ai) and [Daily](https://daily.co).
 
-> **Current state:** the server, container build and frontend shell are in place. The
-> voice conversation is not wired up yet — the app serves a status page and reports its
-> provider configuration at `/api/health`.
+> **Current state:** the planner, the agent and its tools are in place and the whole
+> conversation can be driven as text through the eval harness. Audio is not wired up yet —
+> the app serves a status page and reports its provider configuration at `/api/health`.
 
 ---
 
@@ -51,6 +51,8 @@ absent. No call can be placed until all four are set.
 | `TTS_PROVIDER` | `cartesia` | `cartesia` or `openai` |
 | `TURN_DETECTION` | `smart` | `smart` = Smart Turn v3 semantic end-of-turn; `vad` = fixed silence threshold |
 | `VAD_STOP_SECS` | `0.8` | Only read when `TURN_DETECTION=vad` |
+| `LOG_LEVEL` | `INFO` | Pipecat's debug output is chatty enough to print key material |
+| `AS_OF` | today, in India | Pins the date the 30 days are measured from, so a run is reproducible |
 | `PORT` | `8080` | |
 
 **Fewer accounts, more latency.** Setting `STT_PROVIDER=openai` and `TTS_PROVIDER=openai`
@@ -81,6 +83,30 @@ uv run ruff check .
 
 Tests are not part of the container image, and the runtime environment is built without
 dev dependencies.
+
+### Behavioural evals
+
+`tests/` is deterministic and needs no model. How the agent *behaves* is checked
+separately, by driving the real pipeline as text over Pipecat's eval transport — same
+prompt, same tools, no microphone and no speech synthesised.
+
+```bash
+uv run python -m pipecat.evals suite evals/suite.yaml
+```
+
+That spawns a bot per scenario, drives it, and tears it down. Use `python -m` rather than
+the `pipecat` script: the scenarios' judge lives in this repo at `evals/judge.py`, and only
+`-m` puts the working directory on the import path.
+
+To iterate on one scenario against a bot you keep running:
+
+```bash
+uv run python -m server.eval_bot --port 7860 --as-of 2026-09-01
+uv run python -m pipecat.evals run evals/scenarios/the_month_does_not_work.yaml -v
+```
+
+Both the bot under test and the judge call the OpenAI API, so `OPENAI_API_KEY` needs
+credit on it — a suite run costs a few cents.
 
 ---
 
