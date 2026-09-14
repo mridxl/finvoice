@@ -205,6 +205,15 @@ under an agreed plan, whereas here the contractual amounts are still due, so a p
 payment is still a missed payment — and proposing arrangements is exactly what SPEC §4.3
 forbids this assistant from inventing.
 
+**The one exception is not ours to propose.** The plan can say what is left over and
+suggest the user ask their lender what, if anything, would be accepted. If they come back
+with an answer, it enters the log as `ArrangementConfirmed` and the planner honours it —
+reducing that payment to the agreed figure before giving it up entirely, and never
+reducing it at all while the month clears without doing so. The amount owed is untouched,
+so the card still shows what remains outstanding. The assistant never proposes the
+arrangement, never suggests a figure, and never says it has contacted anyone: the lender's
+answer reaches the plan only through the user.
+
 **Known weakness.** `cost_of_delay` computes card penalties on the *minimum*, because the
 card's outstanding balance is not a fact we collect. It therefore understates card risk —
 measured on the §4.7 fixture it ranks the personal loan as the most expensive thing to
@@ -302,6 +311,7 @@ correct_fact(fact_id, amount_rupees?, day_of_month?)
 mark_unknown(kind, label)
 flag_conflict(fact_ids, note)
 resolve_conflict(conflict_id, chosen_fact_id)
+record_lender_answer(fact_id, accepts_rupees)   # only after the user reports one
 compute_plan()          -> structured plan for the model to narrate
 open_questions()        -> ranked gaps
 ```
