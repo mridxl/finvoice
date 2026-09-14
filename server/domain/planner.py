@@ -9,7 +9,7 @@ read here, which is why the tests need neither an LLM nor a network.
 """
 
 from calendar import monthrange
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Literal
 
@@ -54,9 +54,10 @@ class Action:
     fact_id: str
     label: str
     kind: str
-    amount: Money  # magnitude, not signed
+    amount: Money  # the full contractual amount, magnitude not signed
     on: date | None
     reason: str
+    paid: Money = 0  # what the plan still pays toward it; the rest goes unmet
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,7 @@ class PlanOutcome:
     status: Status
     ledger: tuple[LedgerRow, ...]
     cuts: tuple[Action, ...]
+    arranged: tuple[Action, ...]  # met at a reduced figure the lender confirmed
     unpaid: tuple[Action, ...]
     opening: Money
     closing: Money
@@ -85,33 +87,31 @@ def plan(state: FinancialState, as_of: date) -> PlanOutcome:
     """Walk 30 days from `as_of`, then drop commitments up the ladder until it clears."""
     facts = state.planning_facts()
     opening = sum(f.amount or 0 for f in facts if f.kind == "cash_on_hand")
-    schedule = _schedule([f for f in facts if f.kind != "cash_on_hand"], as_of)
+    spending = [f for f in facts if f.kind != "cash_on_hand"]
 
-    baseline = _simulate(opening, schedule, frozenset(), as_of)
-    ledger, dropped = baseline, []
-    for fact in _drop_sequence(facts):
+    baseline = _simulate(opening, _schedule(spending, as_of), as_of)
+    ledger, applied = baseline, {}
+    for fact, target in _relief_steps(facts):
         if _lowest(ledger) >= 0:
             break
-        trial = _simulate(
-            opening, schedule, frozenset({*(f.fact_id for f in dropped), fact.fact_id}), as_of
-        )
-        # Skip anything that does not move the worst day. Dropping a payment due
-        # after the crunch relieves nothing — it would just be a second missed
-        # payment bought for no benefit.
+        trial_applied = {**applied, fact.fact_id: target}
+        trial = _simulate(opening, _schedule(_reduced(spending, trial_applied), as_of), as_of)
+        # Skip anything that does not move the worst day. Giving up a payment due
+        # after the crunch relieves nothing — it would just be a second broken
+        # commitment bought for no benefit.
         if _lowest(trial) <= _lowest(ledger):
             continue
-        dropped.append(fact)
-        ledger = trial
+        applied, ledger = trial_applied, trial
 
     lowest = _lowest(ledger)
-    cuts = tuple(_action(f, as_of, "optional spending, cut first") for f in dropped if _cut(f))
-    unpaid = tuple(_action(f, as_of, _why_unpaid(f)) for f in dropped if not _cut(f))
+    cuts, arranged, unpaid = _classify(facts, applied, as_of)
     shortfall = -lowest if lowest < 0 else 0
 
     return PlanOutcome(
-        status=_status(unpaid, cuts, shortfall, lowest),
+        status=_status(unpaid, cuts, arranged, lowest, shortfall),
         ledger=ledger,
         cuts=cuts,
+        arranged=arranged,
         unpaid=unpaid,
         opening=opening,
         closing=ledger[-1].closing,
@@ -119,7 +119,7 @@ def plan(state: FinancialState, as_of: date) -> PlanOutcome:
         shortfall=shortfall,
         baseline_gap=max(0, -_lowest(baseline)),
         first_shortfall_on=next((r.on for r in baseline if r.closing < 0), None),
-        assumptions=_assumptions(facts, dropped),
+        assumptions=_assumptions(facts, [f for f in facts if f.fact_id in applied]),
     )
 
 
@@ -173,11 +173,54 @@ def _drop_sequence(facts: tuple[Fact, ...]) -> list[Fact]:
     )
 
 
+def _relief_steps(facts: tuple[Fact, ...]) -> list[tuple[Fact, Money]]:
+    """Every way a commitment can give way, in ladder order, as (fact, amount left paid).
+
+    An obligation gives way once — to nothing — unless the user has come back
+    with an amount the lender confirmed they would accept. Then it gives way
+    twice: down to that figure first, and only to nothing if the month still
+    does not clear. The figure is the lender's, relayed by the user; we neither
+    choose it nor suggest one.
+    """
+    steps: list[tuple[Fact, Money]] = []
+    for fact in _drop_sequence(facts):
+        agreed = fact.part_payment
+        if agreed is not None and 0 < agreed < (fact.amount or 0):
+            steps.append((fact, agreed))
+        steps.append((fact, 0))
+    return steps
+
+
+def _reduced(facts: list[Fact], applied: dict[str, Money]) -> list[Fact]:
+    return [replace(f, amount=applied[f.fact_id]) if f.fact_id in applied else f for f in facts]
+
+
+def _classify(
+    facts: tuple[Fact, ...], applied: dict[str, Money], as_of: date
+) -> tuple[tuple[Action, ...], tuple[Action, ...], tuple[Action, ...]]:
+    """Split what gave way into spending cut, obligations met as arranged, and
+    obligations simply not met. `applied` is in the order the ladder reached them."""
+    by_id = {f.fact_id: f for f in facts}
+    cuts, arranged, unpaid = [], [], []
+    for fact_id, still_paid in applied.items():
+        fact = by_id[fact_id]
+        if fact.kind == "optional":
+            cuts.append(_action(fact, as_of, "optional spending, cut first"))
+        elif still_paid > 0:
+            arranged.append(
+                _action(fact, as_of, "reduced to the figure you said your lender would accept",
+                        still_paid)
+            )
+        else:
+            unpaid.append(_action(fact, as_of, _why_unpaid(fact)))
+    return tuple(cuts), tuple(arranged), tuple(unpaid)
+
+
 def _schedule(facts: list[Fact], as_of: date) -> dict[date, list[Entry]]:
     days: dict[date, list[Entry]] = {}
     for fact in facts:
-        if fact.amount is None:
-            continue  # an unknown amount cannot be placed; gaps.py asks about it
+        if not fact.amount:
+            continue  # unknown or reduced to nothing; gaps.py asks about unknowns
         for when, amount in _placements(fact, as_of):
             days.setdefault(when, []).append(Entry(fact.fact_id, fact.label, fact.kind, amount))
     return days
@@ -207,12 +250,12 @@ def _date_for_day(day: int, as_of: date) -> date:
 
 
 def _simulate(
-    opening: Money, schedule: dict[date, list[Entry]], dropped: frozenset[str], as_of: date
+    opening: Money, schedule: dict[date, list[Entry]], as_of: date
 ) -> tuple[LedgerRow, ...]:
     rows, balance = [], opening
     for offset in range(WINDOW_DAYS):
         when = as_of + timedelta(days=offset)
-        entries = tuple(e for e in schedule.get(when, ()) if e.fact_id not in dropped)
+        entries = tuple(schedule.get(when, ()))
         balance += sum(e.amount for e in entries)
         rows.append(LedgerRow(when, entries, balance))
     return tuple(rows)
@@ -220,10 +263,6 @@ def _simulate(
 
 def _lowest(ledger: tuple[LedgerRow, ...]) -> Money:
     return min(row.closing for row in ledger)
-
-
-def _cut(fact: Fact) -> bool:
-    return fact.kind == "optional"
 
 
 def _why_unpaid(fact: Fact) -> str:
@@ -234,22 +273,29 @@ def _why_unpaid(fact: Fact) -> str:
     return "unsecured loan: nothing is repossessed, and the penalty compounds least"
 
 
-def _action(fact: Fact, as_of: date, reason: str) -> Action:
+def _action(fact: Fact, as_of: date, reason: str, paid: Money = 0) -> Action:
     when = None if fact.spread or fact.day is None else _date_for_day(fact.day, as_of)
-    return Action(fact.fact_id, fact.label, fact.kind, fact.amount or 0, when, reason)
+    return Action(fact.fact_id, fact.label, fact.kind, fact.amount or 0, when, reason, paid)
 
 
 def _status(
-    unpaid: tuple[Action, ...], cuts: tuple[Action, ...], shortfall: Money, lowest: Money
+    unpaid: tuple[Action, ...],
+    cuts: tuple[Action, ...],
+    arranged: tuple[Action, ...],
+    lowest: Money,
+    shortfall: Money,
 ) -> Status:
     if unpaid or shortfall > 0:
         return "infeasible"
-    if cuts or lowest < CUSHION:
+    # An arrangement the lender confirmed means this month's obligation is met,
+    # so it is not infeasible — but it took an arrangement to get there, and the
+    # balance behind it is still owed. That is never "feasible".
+    if cuts or arranged or lowest < CUSHION:
         return "tight"
     return "feasible"
 
 
-def _assumptions(facts: tuple[Fact, ...], dropped: list[Fact]) -> tuple[str, ...]:
+def _assumptions(facts: tuple[Fact, ...], gave_way: list[Fact]) -> tuple[str, ...]:
     notes = []
     for fact in facts:
         if fact.amount is not None and fact.day is None and not fact.spread:
@@ -258,6 +304,6 @@ def _assumptions(facts: tuple[Fact, ...], dropped: list[Fact]) -> tuple[str, ...
             notes.append(f"{fact.label}: planned on a figure that is not yet confirmed.")
         if fact.day_bounds is not None:
             notes.append(f"{fact.label}: planned on a date that is not yet confirmed.")
-    if any(f.kind in DEFAULT_APR_BP for f in dropped):
+    if any(f.kind in DEFAULT_APR_BP for f in gave_way):
         notes.append("Late-payment costs use conservative defaults, not your lender's actual terms.")
     return tuple(notes)

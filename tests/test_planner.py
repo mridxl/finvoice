@@ -6,7 +6,13 @@ from a previous run. A snapshot test would happily lock in a wrong answer.
 
 from datetime import date
 
-from server.domain.events import Fact, FactCorrected, FactRecorded, FactRetracted
+from server.domain.events import (
+    ArrangementConfirmed,
+    Fact,
+    FactCorrected,
+    FactRecorded,
+    FactRetracted,
+)
 from server.domain.money import from_rupees
 from server.domain.planner import CUSHION, _drop_sequence, cost_of_delay, plan
 from server.domain.state import fold
@@ -149,3 +155,59 @@ def test_an_expense_with_no_date_is_placed_at_the_worst_point():
     outcome = plan(fold(log), AS_OF)
     assert outcome.first_shortfall_on == date(2026, 9, 1)
     assert any("no date given" in note for note in outcome.assumptions)
+
+
+def test_the_planner_never_invents_a_part_payment():
+    # Nothing in the log mentions an arrangement, so the EMI stays all-or-nothing
+    # and goes unmet in full. A reduced figure can only ever come from the user
+    # reporting what their lender said.
+    outcome = golden_plan()
+    assert outcome.arranged == ()
+    assert outcome.unpaid[0].paid == 0
+
+
+def test_an_arrangement_the_user_brought_back_is_honoured():
+    # He asked; they said they would take 4,500 this month. That is exactly the
+    # 5,000 of relief the month needed after cutting optional spending, so the
+    # balance lands on nothing left and nothing missed.
+    log = [*GOLDEN, ArrangementConfirmed("loan", from_rupees(4_500), "they'll take 4,500", 12)]
+    outcome = plan(fold(log), AS_OF)
+
+    assert [a.fact_id for a in outcome.arranged] == ["loan"]
+    assert outcome.arranged[0].paid == from_rupees(4_500)
+    assert outcome.arranged[0].amount == from_rupees(9_500)  # still what he owes
+    assert outcome.unpaid == ()
+    assert outcome.closing == 0
+    # It took cuts and an arrangement to get here, and 5,000 of the EMI is still
+    # outstanding. That is never "feasible".
+    assert outcome.status == "tight"
+
+
+def test_the_arranged_amount_is_what_actually_leaves_the_account():
+    log = [*GOLDEN, ArrangementConfirmed("loan", from_rupees(4_500), "", 12)]
+    outcome = plan(fold(log), AS_OF)
+    on_the_fifteenth = next(r for r in outcome.ledger if r.on == date(2026, 9, 15))
+    loan = next(e for e in on_the_fifteenth.entries if e.fact_id == "loan")
+    assert loan.amount == -from_rupees(4_500)
+
+
+def test_an_arrangement_too_small_to_rescue_the_month_falls_through_to_unpaid():
+    # They would only come down to 9,000. That frees 500 against a 5,000 gap, so
+    # the ladder carries on and the EMI ends up unmet anyway.
+    log = [*GOLDEN, ArrangementConfirmed("loan", from_rupees(9_000), "", 12)]
+    outcome = plan(fold(log), AS_OF)
+    assert outcome.arranged == ()
+    assert [a.fact_id for a in outcome.unpaid] == ["loan"]
+
+
+def test_an_arrangement_is_left_unused_when_the_month_already_clears():
+    # The planner must never shrink a payment just because it is allowed to.
+    log = [
+        fact("cash", "cash_on_hand", "Cash on hand", 50_000),
+        fact("salary", "income", "Salary", 50_000, day=1),
+        fact("loan", "loan_emi", "Personal loan EMI", 9_500, day=15),
+        ArrangementConfirmed("loan", from_rupees(4_500), "", 3),
+    ]
+    outcome = plan(fold(log), AS_OF)
+    assert outcome.arranged == ()
+    assert outcome.status == "feasible"
