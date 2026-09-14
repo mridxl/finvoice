@@ -1,0 +1,111 @@
+"""The event log's vocabulary: facts and the things that happen to them.
+
+Corrections append. Nothing here is ever mutated in place, which is what makes
+"the user changed their mind" an ordinary operation rather than a patch, and
+leaves an audit trail the cards can show.
+
+The reducer lives in `state.py`, because it produces a `FinancialState` and the
+dependency has to point one way.
+"""
+
+from dataclasses import dataclass
+from typing import Literal
+
+from server.domain.money import Money
+
+Kind = Literal["income", "loan_emi", "credit_card", "essential", "optional", "cash_on_hand"]
+Certainty = Literal["stated", "estimated", "unknown"]
+
+OUTFLOW_KINDS: frozenset[str] = frozenset({"loan_emi", "credit_card", "essential", "optional"})
+
+
+@dataclass(frozen=True)
+class Bounds:
+    """An inclusive range. Uncertainty is carried as an interval, not a distribution —
+    interval arithmetic is explainable out loud in a way Monte Carlo is not."""
+
+    low: int
+    high: int
+
+    def __post_init__(self) -> None:
+        if self.low > self.high:
+            raise ValueError(f"bounds inverted: {self.low} > {self.high}")
+
+
+@dataclass(frozen=True)
+class Fact:
+    """One thing the user told us about their money.
+
+    `day` is a day of the month, not a date: people say "the fifth", and which
+    fifth it is depends on when the conversation happens. `spread=True` means an
+    amount that trickles out across the month rather than landing on a day.
+    """
+
+    fact_id: str
+    kind: Kind
+    label: str
+    amount: Money | None = None
+    day: int | None = None
+    amount_bounds: Bounds | None = None
+    day_bounds: Bounds | None = None
+    spread: bool = False
+    secured: bool = False
+    verbatim: str = ""
+    turn: int = 0
+
+    @property
+    def certainty(self) -> Certainty:
+        """Derived, never stored — a stored certainty can contradict the amount beside it."""
+        if self.amount is None:
+            return "unknown"
+        if self.amount_bounds is not None or self.day_bounds is not None:
+            return "estimated"
+        return "stated"
+
+    @property
+    def signed(self) -> Money:
+        """Effect on the balance. Income adds, everything else takes away."""
+        if self.amount is None:
+            return 0
+        return self.amount if self.kind in ("income", "cash_on_hand") else -self.amount
+
+
+@dataclass(frozen=True)
+class FactRecorded:
+    fact: Fact
+
+
+@dataclass(frozen=True)
+class FactCorrected:
+    """A revision of an existing fact. Supersedes an estimate: correcting an
+    amount clears its bounds, because the user has now just told us the number."""
+
+    fact_id: str
+    amount: Money | None = None
+    day: int | None = None
+    verbatim: str = ""
+    turn: int = 0
+
+
+@dataclass(frozen=True)
+class FactRetracted:
+    fact_id: str
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class ConflictFlagged:
+    """Two statements about the same thing that cannot both be true."""
+
+    conflict_id: str
+    fact_ids: tuple[str, ...]
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class ConflictResolved:
+    conflict_id: str
+    chosen_fact_id: str
+
+
+Event = FactRecorded | FactCorrected | FactRetracted | ConflictFlagged | ConflictResolved
