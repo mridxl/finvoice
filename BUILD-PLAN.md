@@ -191,6 +191,26 @@ If APR is unknown the planner uses a documented conservative default **and label
 an assumption in the output**. It never silently guesses. That is SPEC §3.2 "avoid
 presenting guesses as facts" made mechanical.
 
+**Why this order, and why all-or-nothing.** Mainstream debt guidance agrees on the top
+of the ladder: pay what keeps a roof, the lights on and food on the table first, then
+secured debts — especially a vehicle needed for work, since losing it costs the income
+that services everything else. Cards sit above the unsecured loan because missing a card
+minimum starts revolving interest on the *whole outstanding balance* at 36–48% a year,
+the most expensive money an Indian household can be charged; a missed instalment carries
+a late fee and penal interest on that instalment alone.
+
+UK debt-advice practice would split what is available across non-priority creditors
+**pro-rata** instead. We deliberately do not: pro-rata belongs to negotiating arrears
+under an agreed plan, whereas here the contractual amounts are still due, so a part
+payment is still a missed payment — and proposing arrangements is exactly what SPEC §4.3
+forbids this assistant from inventing.
+
+**Known weakness.** `cost_of_delay` computes card penalties on the *minimum*, because the
+card's outstanding balance is not a fact we collect. It therefore understates card risk —
+measured on the §4.7 fixture it ranks the personal loan as the most expensive thing to
+delay, the opposite of the ladder's claim. The tier ordering, not the arithmetic, is what
+protects the cards; `cost_of_delay` only breaks ties *within* a tier.
+
 ### 4.5 Gap ranking — the stopping criterion
 
 For each `unknown` or `estimated` fact, re-run the planner at its low and high bound.
