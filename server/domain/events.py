@@ -50,6 +50,11 @@ class Fact:
     day_bounds: Bounds | None = None
     spread: bool = False
     secured: bool = False
+    # What the lender has confirmed they will accept this month, when the user
+    # has gone and asked them. Never computed, never assumed, and absent unless
+    # the user reports an answer — the assistant is forbidden from inventing an
+    # arrangement, and this field is the only way one can enter the plan.
+    part_payment: Money | None = None
     verbatim: str = ""
     turn: int = 0
 
@@ -94,6 +99,22 @@ class FactRetracted:
 
 
 @dataclass(frozen=True)
+class ArrangementConfirmed:
+    """The user asked their lender and came back with an answer.
+
+    Deliberately not a `FactCorrected`: the user has not revised what they said,
+    a third party has told them something new. It leaves the amount owed exactly
+    as recorded, because an arrangement to pay less this month does not make the
+    debt smaller.
+    """
+
+    fact_id: str
+    accepts: Money
+    verbatim: str = ""
+    turn: int = 0
+
+
+@dataclass(frozen=True)
 class ConflictFlagged:
     """Two statements about the same thing that cannot both be true."""
 
@@ -108,4 +129,11 @@ class ConflictResolved:
     chosen_fact_id: str
 
 
-Event = FactRecorded | FactCorrected | FactRetracted | ConflictFlagged | ConflictResolved
+Event = (
+    FactRecorded
+    | FactCorrected
+    | FactRetracted
+    | ArrangementConfirmed
+    | ConflictFlagged
+    | ConflictResolved
+)

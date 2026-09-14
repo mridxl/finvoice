@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
 from server.domain.events import (
+    ArrangementConfirmed,
     Bounds,
     ConflictFlagged,
     ConflictResolved,
@@ -142,6 +143,11 @@ def fold(events: Sequence[Event]) -> FinancialState:
 
             case FactRetracted(fact_id=fact_id):
                 facts.pop(fact_id, None)
+
+            case ArrangementConfirmed(fact_id=fact_id):
+                previous = facts.get(fact_id)
+                if previous is not None:
+                    facts[fact_id] = replace(previous, part_payment=event.accepts)
 
             case ConflictFlagged(conflict_id=conflict_id):
                 conflicts[conflict_id] = Conflict(conflict_id, event.fact_ids, event.note)

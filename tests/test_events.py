@@ -6,6 +6,7 @@ is a first-class operation, not a patch.
 """
 
 from server.domain.events import (
+    ArrangementConfirmed,
     Bounds,
     ConflictFlagged,
     ConflictResolved,
@@ -91,3 +92,11 @@ def test_resolving_a_conflict_drops_the_losing_claim():
     assert state.get("loan") is None
     assert state.get("loan_b").amount == from_rupees(8_500)
     assert state.open_conflicts == ()
+
+
+def test_a_confirmed_arrangement_does_not_rewrite_what_is_owed():
+    state = fold([*GOLDEN, ArrangementConfirmed("loan", from_rupees(4_500), "they agreed", 12)])
+    loan = state.get("loan")
+    assert loan.amount == from_rupees(9_500)  # the debt did not shrink
+    assert loan.part_payment == from_rupees(4_500)
+    assert "loan" not in state.history  # not a correction; the user said nothing new
