@@ -31,22 +31,31 @@ Copy `.env.example` to `.env`. `.env` is gitignored; no values are committed.
 
 ### Required
 
-| Variable | Used for | Source |
-|---|---|---|
-| `DAILY_API_KEY` | WebRTC transport — creates the call room and mints join tokens. Server-side only; never reaches the browser. | [dashboard.daily.co/developers](https://dashboard.daily.co/developers) |
-| `OPENAI_API_KEY` | The conversational model. | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| `DEEPGRAM_API_KEY` | Streaming speech-to-text. | [console.deepgram.com](https://console.deepgram.com/) |
-| `CARTESIA_API_KEY` | Streaming text-to-speech. | [play.cartesia.ai/keys](https://play.cartesia.ai/keys) |
+Which keys you need depends on the providers you select. `GET /api/health` names exactly
+what is missing for the combination you chose.
 
-Missing keys don't stop the server — it starts and `GET /api/health` names exactly what is
-absent. No call can be placed until all four are set.
+| Variable | Used for | Needed when | Source |
+|---|---|---|---|
+| `DAILY_API_KEY` | WebRTC transport — creates the call room and mints join tokens. Server-side only; never reaches the browser. | always | [dashboard.daily.co/developers](https://dashboard.daily.co/developers) |
+| `OPENAI_API_KEY` | The conversational model, and OpenAI's STT or TTS. | any of the three seams points at `openai` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| `GOOGLE_API_KEY` | The conversational model, on Gemini. | `LLM_PROVIDER=google` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `DEEPGRAM_API_KEY` | Streaming speech-to-text. | `STT_PROVIDER=deepgram` | [console.deepgram.com](https://console.deepgram.com/) |
+| `CARTESIA_API_KEY` | Streaming text-to-speech. | `TTS_PROVIDER=cartesia` | [play.cartesia.ai/keys](https://play.cartesia.ai/keys) |
+
+Missing keys don't stop the server — it starts and reports them. No call can be placed
+until the ones your configuration needs are set.
+
+**On the Google key:** create it fresh in AI Studio rather than reusing an old one. Google
+now rejects unrestricted standard keys and blocks dormant ones; keys created in AI Studio
+today are auth keys and are fine. A key in either bad state is tagged in the console.
 
 ### Optional
 
 | Variable | Default | Notes |
 |---|---|---|
-| `LLM_PROVIDER` | `openai` | |
-| `LLM_MODEL` | `gpt-5-mini` | |
+| `LLM_PROVIDER` | `openai` | `openai` or `google` |
+| `LLM_MODEL` | per provider | Blank picks the provider's default: `gpt-5-mini`, or `gemini-3.8-flash` |
+| `GEMINI_THINKING_LEVEL` | `low` | Gemini only. `minimal`/`low`/`medium`/`high`. `low` is the floor for 3.8-flash and 3.7-flash — both reject `minimal` outright |
 | `STT_PROVIDER` | `deepgram` | `deepgram` or `openai` |
 | `TTS_PROVIDER` | `cartesia` | `cartesia` or `openai` |
 | `TURN_DETECTION` | `smart` | `smart` = Smart Turn v3 semantic end-of-turn; `vad` = fixed silence threshold |
@@ -59,6 +68,17 @@ absent. No call can be placed until all four are set.
 runs the whole system on `DAILY_API_KEY` and `OPENAI_API_KEY` alone. It works; it is
 slower. OpenAI's TTS adds roughly 200–400ms per reply against Cartesia's sub-100ms
 time-to-first-byte, which is a meaningful share of a one-second budget.
+
+**Running on Gemini instead.** Set `LLM_PROVIDER=google` and fill in `GOOGLE_API_KEY`;
+leave `LLM_MODEL` blank unless you want something other than `gemini-3.8-flash`. Nothing
+else changes — the model is the only seam that moves, and Deepgram and Cartesia keep
+handling speech.
+
+Gemini 3 models think before answering. Those tokens cost latency on a call and bill at the
+output rate, so `GEMINI_THINKING_LEVEL` is set explicitly rather than left to the model's
+own default, for the same reason `VAD_STOP_SECS` is. Keep it as low as your model accepts:
+`gemini-3.8-flash` and `gemini-3.7-flash` reject `minimal` with a 400 on the first turn, and
+Pipecat 1.10.0 only knows to clamp 3.7, so it will forward a level the model refuses.
 
 ---
 
@@ -105,8 +125,14 @@ uv run python -m server.eval_bot --port 7860 --as-of 2026-09-01
 uv run python -m pipecat.evals run evals/scenarios/the_month_does_not_work.yaml -v
 ```
 
-Both the bot under test and the judge call the OpenAI API, so `OPENAI_API_KEY` needs
-credit on it — a suite run costs a few cents.
+The judge follows `LLM_PROVIDER` too, so one switch moves the bot and its examiner
+together and you can never end up grading a Gemini conversation with a provider you have
+no credit for. It deliberately does *not* follow `LLM_MODEL`: a yardstick that moves when
+you tune the thing being measured is not a yardstick.
+
+Both the bot under test and the judge call a paid API, so the key for whichever provider
+you selected needs credit on it. A suite run is roughly 82k input and 11k output tokens —
+about 17 cents on `gemini-3.8-flash`.
 
 ---
 

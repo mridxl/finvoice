@@ -414,11 +414,15 @@ PORT=8080
 
 DAILY_API_KEY=            # required. server-side only, never sent to browser
 
-LLM_PROVIDER=openai       # provider seam — see SPEC §11, decision open
+LLM_PROVIDER=openai       # openai | google — see SPEC §11, decision open
 STT_PROVIDER=deepgram
 TTS_PROVIDER=cartesia
 
+LLM_MODEL=                # blank takes the selected provider's default
+GEMINI_THINKING_LEVEL=low       # 3.8-flash and 3.7-flash reject 'minimal'
+
 OPENAI_API_KEY=
+GOOGLE_API_KEY=
 DEEPGRAM_API_KEY=
 CARTESIA_API_KEY=
 
@@ -427,7 +431,20 @@ VAD_STOP_SECS=0.8         # only used when TURN_DETECTION=vad
 ```
 
 `providers.py` is a factory behind these switches. Provider choice is deliberately
-deferred (SPEC §11.A); the seam is what makes deferring safe.
+deferred (SPEC §11.A); the seam is what makes deferring safe, and adding Gemini proved
+it — one branch in `make_llm`, with `bot.py` and the pipeline untouched.
+
+**`LLM_MODEL` has no single default.** It resolves against the provider actually selected,
+because one shared default means choosing Gemini and forgetting the model sends an OpenAI
+model name to Google, and that fails at the first turn rather than at startup.
+
+**The eval judge follows `LLM_PROVIDER` and not `LLM_MODEL`.** One switch moves the bot and
+its examiner together, so a run can never be graded by a provider there is no credit for;
+but the yardstick stays on its provider's default, because a measure that moves whenever
+the thing being measured is tuned is not a measure. Judging a model with its own family
+shares blind spots — acceptable only because every criterion in `evals/scenarios/` asks
+about something observable (did it state a figure, did it claim to have contacted a
+lender) rather than about subtle quality.
 
 ---
 
