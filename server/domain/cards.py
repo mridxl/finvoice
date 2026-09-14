@@ -56,6 +56,7 @@ def build_cards(
         "missing_info": {"items": [asdict(g) for g in gaps]},
         "actions": {
             "cuts": [_action(a) for a in outcome.cuts],
+            "arranged": [_action(a) for a in outcome.arranged],
             "unpaid": [_action(a) for a in outcome.unpaid],
         },
         "ledger": {"rows": [_row(row) for row in outcome.ledger]},
@@ -118,6 +119,8 @@ def _action(action: Action) -> dict:
         "label": action.label,
         "kind": action.kind,
         "amount": _money(action.amount),
+        "paid": _money(action.paid),
+        "outstanding": _money(action.amount - action.paid),
         "on": _iso(action.on),
         "reason": action.reason,
     }

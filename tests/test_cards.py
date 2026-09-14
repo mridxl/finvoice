@@ -3,7 +3,7 @@
 import json
 
 from server.domain.cards import TITLES, build_cards
-from server.domain.events import FactCorrected
+from server.domain.events import ArrangementConfirmed, FactCorrected
 from server.domain.gaps import rank_gaps
 from server.domain.money import from_rupees
 from server.domain.planner import plan
@@ -80,3 +80,12 @@ def test_the_ledger_card_is_the_arithmetic_a_reviewer_can_check():
 def test_the_missing_info_card_carries_the_ranked_questions():
     items = cards_for(GOLDEN)["missing_info"]["body"]["items"]
     assert [(i["fact_id"], i["impact"]) for i in items] == [("spouse", "high")]
+
+
+def test_the_actions_card_shows_an_arrangement_with_what_remains_owed():
+    log = [*GOLDEN, ArrangementConfirmed("loan", from_rupees(4_500), "", 12)]
+    body = cards_for(log)["actions"]["body"]
+    assert body["unpaid"] == []
+    arranged = body["arranged"][0]
+    assert arranged["paid"]["text"] == "4,500"
+    assert arranged["outstanding"]["text"] == "5,000"
