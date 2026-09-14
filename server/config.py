@@ -11,13 +11,24 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+# The real environment wins over the file. That is how every deployment target
+# passes configuration, and it is what lets `LLM_PROVIDER=google uv run ...`
+# switch the model for one run without editing .env — which matters for a seam
+# whose whole purpose is being switchable.
+load_dotenv()
 
 INDIA = ZoneInfo("Asia/Kolkata")
 
 
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
+
+
+# What each provider is asked for when LLM_MODEL says nothing. Per provider,
+# because one shared default would mean selecting Google and forgetting the
+# model sends an OpenAI model name to Gemini, which fails somewhere far from
+# the mistake.
+DEFAULT_LLM_MODELS = {"openai": "gpt-5-mini", "google": "gemini-3.8-flash"}
 
 
 def _as_of() -> date:
@@ -45,7 +56,20 @@ class Config:
     stt_provider: str = _env("STT_PROVIDER", "deepgram")
     tts_provider: str = _env("TTS_PROVIDER", "cartesia")
 
-    llm_model: str = _env("LLM_MODEL", "gpt-5-mini")
+    # Empty means "whatever this provider's default is", resolved below against
+    # the provider actually selected rather than against the environment, so
+    # constructing a Config directly behaves the same way the app does.
+    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL"))
+
+    # Gemini only. Gemini 3 models think before answering, and thinking tokens
+    # are billed at the output rate as well as spent on latency — on a voice
+    # call both are felt, so the lowest a model will accept is what we want.
+    #
+    # "low", not "minimal": gemini-3.8-flash and gemini-3.7-flash both reject
+    # MINIMAL with a 400. Pipecat 1.10.0 clamps only 3.7 (it predates 3.8), so
+    # it will happily send a level the model refuses — which is why this is a
+    # setting, and why its default is the one the default model actually takes.
+    thinking_level: str = _env("GEMINI_THINKING_LEVEL", "low")
 
     # smart | vad. Smart Turn v3 judges whether an utterance sounds finished;
     # a fixed silence threshold either clips people mid-number or feels slow.
@@ -56,14 +80,55 @@ class Config:
 
     daily_api_key: str = field(default_factory=lambda: _env("DAILY_API_KEY"), repr=False)
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"), repr=False)
+    # The Google SDK reads GOOGLE_API_KEY itself, and prefers it over
+    # GEMINI_API_KEY when both are set. We pass the key explicitly, but using
+    # the name the SDK expects keeps one convention instead of two.
+    google_api_key: str = field(default_factory=lambda: _env("GOOGLE_API_KEY"), repr=False)
     deepgram_api_key: str = field(default_factory=lambda: _env("DEEPGRAM_API_KEY"), repr=False)
     cartesia_api_key: str = field(default_factory=lambda: _env("CARTESIA_API_KEY"), repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.llm_model:
+            object.__setattr__(
+                self, "llm_model", DEFAULT_LLM_MODELS.get(self.llm_provider, "")
+            )
+
+    def model_mismatch(self) -> str | None:
+        """A complaint when `LLM_MODEL` names a model the selected provider cannot serve.
+
+        Only the exact defaults of the other providers are recognised, because
+        that is the mistake that actually happens: a model pinned in `.env` for
+        one provider, left behind when the provider is switched. Anything
+        cleverer would guess at model names and age badly.
+        """
+        stale = {
+            model: provider
+            for provider, model in DEFAULT_LLM_MODELS.items()
+            if provider != self.llm_provider
+        }
+        other = stale.get(self.llm_model)
+        if other is None:
+            return None
+        ours = DEFAULT_LLM_MODELS.get(self.llm_provider)
+        remedy = (
+            f"Clear LLM_MODEL to get {ours!r}"
+            if ours
+            else "Clear LLM_MODEL, or name one it serves"
+        )
+        return (
+            f"LLM_MODEL is {self.llm_model!r}, which is {other}'s model, but "
+            f"LLM_PROVIDER is {self.llm_provider!r}. {remedy}."
+        )
 
     def missing_keys(self) -> list[str]:
         """Required env vars that are absent, given the selected providers."""
         needed = {"DAILY_API_KEY": self.daily_api_key}
-        if self.llm_provider == "openai":
+        # Any of the three seams can be pointed at OpenAI, so asking only about
+        # the model would miss a Gemini conversation transcribed by OpenAI.
+        if "openai" in (self.llm_provider, self.stt_provider, self.tts_provider):
             needed["OPENAI_API_KEY"] = self.openai_api_key
+        if self.llm_provider == "google":
+            needed["GOOGLE_API_KEY"] = self.google_api_key
         if self.stt_provider == "deepgram":
             needed["DEEPGRAM_API_KEY"] = self.deepgram_api_key
         if self.tts_provider == "cartesia":

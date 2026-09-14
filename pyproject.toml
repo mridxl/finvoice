@@ -8,6 +8,14 @@ dependencies = [
     # cartesia and openai need no extra — openai is a core dependency, and the
     # Cartesia service runs over core websockets.
     "pipecat-ai[daily,deepgram]==1.10.0",
+    # What pipecat.services.google.llm imports, taken directly rather than via
+    # pipecat-ai[google]: that extra also pulls Google's Cloud Speech and
+    # Text-to-Speech clients and grpcio, and we use Deepgram and Cartesia for
+    # those. `google-genai` alone is not enough — the module also imports
+    # google.api_core.exceptions, which does not come with it. Safe to pick
+    # apart only because the pipecat version is pinned exactly.
+    "google-genai>=1.68.0,<3",
+    "google-api-core>=2.20,<3",
     "fastapi>=0.115.6",
     "uvicorn[standard]>=0.32.0",
     "python-dotenv>=1.0.0",

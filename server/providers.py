@@ -1,14 +1,20 @@
 """The provider seam.
 
-Every STT / TTS / LLM construction goes through here, selected by env. Locked
-defaults are Deepgram + Cartesia + OpenAI gpt-5-mini; the seam exists so that
-choice stays reversible without touching the pipeline.
+Every STT / TTS / LLM construction goes through here, selected by env. Defaults
+are Deepgram + Cartesia + OpenAI gpt-5-mini, with Gemini as the other model
+option; the seam exists so that choice stays reversible without touching the
+pipeline, which is the whole reason swapping the model is an env var rather than
+a rewrite.
 
 Imports are deferred into the factories: importing a Pipecat service pulls its
 SDK, and `/api/health` must be answerable without any of them.
 """
 
+import logging
+
 from server.config import config
+
+log = logging.getLogger("finvoice.providers")
 
 
 def make_stt():
@@ -44,6 +50,11 @@ def make_tts():
 
 def make_llm(system_instruction: str):
     """The conversational model. It extracts facts and narrates; it never computes."""
+    # Said here rather than at startup so both the server and the eval bot get
+    # it, and said rather than raised so /api/health still answers.
+    if (complaint := config.model_mismatch()) is not None:
+        log.warning("%s", complaint)
+
     if config.llm_provider == "openai":
         from pipecat.services.openai.llm import OpenAILLMService
 
@@ -55,6 +66,20 @@ def make_llm(system_instruction: str):
                 # replacing the context cannot drop it. An eval seeds a
                 # conversation exactly that way.
                 system_instruction=system_instruction,
+            ),
+        )
+    if config.llm_provider == "google":
+        from pipecat.services.google.llm import GoogleLLMService
+
+        return GoogleLLMService(
+            api_key=config.google_api_key,
+            settings=GoogleLLMService.Settings(
+                model=config.llm_model,
+                system_instruction=system_instruction,
+                # Set rather than left to the model's own default: Gemini 3
+                # thinks before it answers, and on a voice call that time is
+                # silence the user is listening to.
+                thinking=GoogleLLMService.ThinkingConfig(thinking_level=config.thinking_level),
             ),
         )
     raise ValueError(f"unknown LLM_PROVIDER: {config.llm_provider!r}")
@@ -83,9 +108,12 @@ def make_turn_strategies():
 
 def describe() -> dict[str, str]:
     """Selected providers, for /api/health. Never includes key material."""
-    return {
+    described = {
         "llm": f"{config.llm_provider}:{config.llm_model}",
         "stt": config.stt_provider,
         "tts": config.tts_provider,
         "turn_detection": config.turn_detection,
     }
+    if config.llm_provider == "google":
+        described["thinking"] = config.thinking_level
+    return described
