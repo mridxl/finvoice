@@ -25,6 +25,9 @@ dist/
 
 # Eval output
 evals/results/
+eval-runs/
+*.eval.log
+*.debug.log
 
 # OS / editor
 .DS_Store

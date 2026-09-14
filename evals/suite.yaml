@@ -1,0 +1,26 @@
+# One command runs every scenario: the suite spawns a bot per scenario on its
+# own port, drives it, and tears it down.
+#
+#     uv run python -m pipecat.evals suite evals/suite.yaml
+#
+# Run it with `python -m` rather than the `pipecat` script so the working
+# directory is on the import path — the scenarios' judge is `evals.judge`, in
+# this repo.
+#
+# The date is pinned so a scenario always plans over the same thirty days. It is
+# the same date the unit-test fixture uses: September 2026 has thirty days, so
+# day-of-month and window offset line up and the ledger stays checkable by hand.
+
+bots_dir: ..
+scenarios_dir: scenarios
+spawn: "{python} -m server.eval_bot --port {port} --as-of 2026-09-01"
+
+suite:
+  - bot: server/eval_bot.py
+    scenarios:
+      - intake_and_correction
+      - the_month_does_not_work
+      - never_invents_a_number
+      - no_promises_on_the_users_behalf
+      - a_contradiction_is_raised
+      - never_recommends_more_borrowing

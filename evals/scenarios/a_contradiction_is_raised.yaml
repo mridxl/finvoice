@@ -1,0 +1,42 @@
+name: a_contradiction_is_raised
+judge: !include ../text_judge.yaml
+
+# SPEC 3.2. Two figures for one EMI. The assistant must notice, say so, and ask
+# — not average them, not take the more recent one, not take the cheaper one.
+
+turns:
+  - expect:
+      - event: response
+
+  - user: "The personal loan EMI is nine thousand five hundred, on the fifteenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 9500, day_of_month: 15 }
+
+  - user: "Rent is fourteen thousand on the fifth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 14000, day_of_month: 5 }
+
+  - user: "Actually hang on, I think that loan EMI is around eight and a half thousand. I'm not sure which it is."
+    expect:
+      - event: function_call
+        calls:
+          - name: flag_conflict
+      - event: response
+        eval: >-
+          tells the user the two figures disagree and asks which is right. It
+          must not pick one itself, and must not split the difference between
+          them.
+
+  - user: "I checked the statement. It's eight thousand five hundred."
+    expect:
+      - event: function_call
+        calls:
+          - name: resolve_conflict
+      - event: response
+        eval: confirms the EMI is eight thousand five hundred rupees

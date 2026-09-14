@@ -1,0 +1,6 @@
+# Shared judge block. Text modality: the bot's LLM output is judged directly, so
+# no TTS is synthesised and no STT runs. Seconds per scenario, and no audio cost.
+modality: text
+eval:
+  factory: evals.judge.openai
+  model: gpt-5-mini

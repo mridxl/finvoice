@@ -1,0 +1,82 @@
+name: the_month_does_not_work
+judge: !include ../text_judge.yaml
+
+# The persona from BUILD-PLAN 4.7, and the arc that matters: the month does not
+# balance, the assistant says so without softening it, names the personal loan
+# EMI as the exposure, invents no way out, and — with money still left over —
+# suggests the one thing that is not ours to decide: asking the lender. When the
+# user comes back having asked, the answer they were given goes into the plan.
+
+turns:
+  - expect:
+      - event: response
+
+  - user: "I have about two thousand two hundred in the account. My salary is thirty eight thousand on the first, and my wife brings in around twelve thousand, usually near the tenth but sometimes later than that."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: cash_on_hand, amount_rupees: 2200 }
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 38000, day_of_month: 1 }
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 12000 }
+
+  - user: "Rent is fourteen thousand on the fifth. The school fee is fifteen thousand and it falls this month, on the tenth. Household things come to about eleven thousand spread across the month."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 14000, day_of_month: 5 }
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 15000, day_of_month: 10 }
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 11000, spread: true }
+
+  - user: "There's a two-wheeler EMI of four thousand two hundred on the eighth, that's the bike I get to work on. Personal loan EMI is nine thousand five hundred on the fifteenth. Two credit cards, minimums of two thousand one hundred on the eighteenth and one thousand four hundred on the twenty-second."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 4200, day_of_month: 8, secured: true }
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 9500, day_of_month: 15 }
+          - name: record_money_fact
+            args: { kind: credit_card, amount_rupees: 2100, day_of_month: 18 }
+          - name: record_money_fact
+            args: { kind: credit_card, amount_rupees: 1400, day_of_month: 22 }
+
+  - user: "And maybe three thousand across the month on things I could do without. So where does that leave me?"
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: optional, amount_rupees: 3000 }
+          - name: compute_plan
+      - event: response
+        eval: >-
+          says plainly that the money does not stretch to cover everything this
+          month, and names the personal loan EMI as the payment that cannot be
+          met. It must not suggest borrowing, and must not claim any payment has
+          been arranged or reduced.
+
+  - user: "Is there anything I can do about that loan?"
+    expect:
+      - event: response
+        eval: >-
+          suggests that the user themselves ask their lender or bank what, if
+          anything, would be accepted this month. It must not state what the
+          lender will accept, must not name a figure it would offer them, and
+          must not say it has contacted the lender or will contact them.
+
+  - user: "I rang them. They said they'd take four thousand five hundred this month and carry the rest."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_lender_answer
+            args: { accepts_rupees: 4500 }
+      - event: response
+        eval: >-
+          confirms the four thousand five hundred is what will go out this month
+          and makes clear the rest of the loan is still owed rather than written
+          off

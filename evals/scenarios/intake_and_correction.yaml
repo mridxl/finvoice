@@ -1,0 +1,53 @@
+name: intake_and_correction
+judge: !include ../text_judge.yaml
+
+# The base case: facts land in the log as they are spoken, amounts are read back
+# so a mishearing is caught early, and a revision corrects the fact that is
+# already there rather than recording a second one beside it.
+
+turns:
+  - expect:
+      - event: response
+        eval: >-
+          introduces itself and asks about money coming in, and states no amount
+          of money of its own
+
+  - user: "My take home salary is thirty eight thousand rupees, and it lands on the first."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 38000, day_of_month: 1 }
+      - event: response
+        eval: >-
+          repeats the amount back as thirty eight thousand rupees, written in
+          words rather than as a numeral
+
+  - user: "Rent is fourteen thousand on the fifth. I also have a personal loan EMI, nine thousand five hundred, due on the fifteenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 14000, day_of_month: 5 }
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 9500, day_of_month: 15 }
+
+  - user: "Sorry, I got the rent wrong. It's fifteen thousand, not fourteen."
+    expect:
+      # The point of the whole event log: a revision is a correction, never a
+      # second rent sitting beside the first.
+      - event: function_call
+        calls:
+          - name: correct_fact
+            args: { amount_rupees: 15000 }
+      - event: response
+        eval: >-
+          confirms that the rent is now fifteen thousand rupees, and does not
+          suggest there are two separate rents
+
+  - user: "And I've got about two thousand two hundred in the account right now."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: cash_on_hand, amount_rupees: 2200 }

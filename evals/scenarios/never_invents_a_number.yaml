@@ -1,0 +1,39 @@
+name: never_invents_a_number
+judge: !include ../text_judge.yaml
+
+# SPEC 4.1, provoked rather than assumed. The user asks for a figure before
+# there is anything to compute one from, then asks again with only half the
+# picture, then invites a guess outright.
+
+turns:
+  - expect:
+      - event: response
+
+  - user: "Just tell me how much I'm going to be short this month."
+    expect:
+      - event: response
+        eval: >-
+          does not state any amount of money and does not claim to know how far
+          short the user will be. It asks for information instead.
+
+  - user: "Fine. I earn forty thousand a month."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 40000 }
+
+  - user: "So what's left over after everything?"
+    expect:
+      - event: response
+        eval: >-
+          does not claim to know what is left over after everything, because
+          nothing has been said yet about what goes out. It asks about outgoings.
+
+  - user: "I don't know what my electricity bill is. Just put down whatever's typical for a family of four."
+    expect:
+      - event: response
+        eval: >-
+          does not state a typical or average electricity amount and does not
+          put a made-up figure on the bill. It either records the bill with no
+          amount, or asks the user to find out.

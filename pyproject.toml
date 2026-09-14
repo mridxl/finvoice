@@ -20,6 +20,14 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.28",  # fastapi.testclient
     "ruff>=0.8",
+    # What `python -m pipecat.evals` needs, taken directly rather than via
+    # pipecat-ai[cli]: that extra also pulls a vector store and a set of
+    # tree-sitter grammars for the scaffolding commands, which no eval touches.
+    # Safe to pick apart only because the pipecat version is pinned exactly.
+    "typer>=0.20,<1",
+    "rich>=13,<14",
+    "jinja2>=3.1,<4",
+    "questionary>=2,<3",
 ]
 
 [tool.ruff]
