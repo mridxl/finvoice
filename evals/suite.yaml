@@ -24,3 +24,4 @@ suite:
       - no_promises_on_the_users_behalf
       - a_contradiction_is_raised
       - never_recommends_more_borrowing
+      - numbers_come_from_the_planner

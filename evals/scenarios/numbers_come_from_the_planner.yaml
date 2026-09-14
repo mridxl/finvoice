@@ -1,0 +1,83 @@
+name: numbers_come_from_the_planner
+judge: !include ../text_judge.yaml
+
+# The counterpart to never_invents_a_number: that one provokes a figure there is
+# no basis for, this one checks the figure there *is* a basis for arrives intact.
+#
+# Every other scenario asserts the facts going in and leaves the plan coming out
+# to a judge, so none of them can catch the planner returning a wrong number —
+# only the unit tests can. Here the assertions are `text_contains`, because
+# "seven thousand rupees" is not a matter of opinion and a judge should not be
+# asked for an opinion about it.
+#
+# Every fact below carries an explicit day and no range. That is the point: it
+# makes the recorded log determinate, and only a determinate log has a plan you
+# can assert. the_month_does_not_work deliberately leaves dates vague ("usually
+# near the tenth, sometimes later"), which is what makes its outcome unassertable.
+#
+# What planner.plan() returns for these facts on 2026-09-01:
+#
+#   first runs short on      the tenth  — the school fee, before anything gives way
+#   gap if all paid on time  sixteen thousand rupees
+#   cut                      the subscriptions, being optional
+#   cannot be paid           the personal loan EMI, unsecured so it compounds least
+#   still short after that   seven thousand rupees
+#
+# Neither seven nor sixteen thousand is ever said by the user, so neither can be
+# echoed back — the only way to say one is to have been given it by compute_plan.
+#
+# Amounts are chosen so that no spoken figure contains a compound number.
+# `text_contains` is a literal substring check, and "twenty four thousand" is an
+# open invitation for the model to say "twenty-four thousand" and fail on the
+# hyphen. Keep every group under twenty when adding to this file.
+
+turns:
+  - expect:
+      - event: response
+
+  - user: "I've got two thousand rupees in the account. My salary is eighteen thousand and it comes in on the first."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: cash_on_hand, amount_rupees: 2000 }
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 18000, day_of_month: 1 }
+
+  - user: "Rent is twelve thousand on the fifth. The school fee is fifteen thousand and it's due on the tenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 12000, day_of_month: 5 }
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 15000, day_of_month: 10 }
+
+  - user: "The personal loan EMI is six thousand on the twelfth. And there's three thousand rupees of subscriptions I could live without, they all come out together on the eighth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 6000, day_of_month: 12 }
+          - name: record_money_fact
+            args: { kind: optional, amount_rupees: 3000, day_of_month: 8 }
+
+  # Both questions in one turn on purpose: asking only "where does that leave me"
+  # leaves the model free to answer with the gap before the cut or the shortfall
+  # after it, and a substring check cannot be ambiguous about which it wanted.
+  - user: "That's everything. So where does that leave me, and after cutting whatever I can, how much am I still short?"
+    expect:
+      - event: function_call
+        calls:
+          - name: compute_plan
+      - event: response
+        text_contains: "seven thousand rupees"
+        eval: >-
+          says plainly that the money does not stretch to cover everything,
+          names the personal loan EMI as the payment that cannot be met, and
+          says the subscriptions are what to cut. It must not suggest borrowing.
+
+  - user: "Which day does the account first go into the red?"
+    expect:
+      - event: response
+        text_contains: "the tenth"

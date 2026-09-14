@@ -301,3 +301,42 @@ def test_no_tool_accepts_a_figure_the_planner_should_have_worked_out():
     for name, schema in schemas().items():
         for argument in schema.properties:
             assert not computed & set(argument.split("_")), f"{name}.{argument}"
+
+
+def test_the_dated_scenarios_figures_are_still_what_the_planner_says():
+    """Guards the literal strings in `evals/scenarios/numbers_come_from_the_planner.yaml`.
+
+    That scenario asserts the assistant speaks these exact words. Discovering a
+    drift there costs a minute, an API call and a judge; discovering it here
+    costs five seconds and names both files.
+
+    On paper from 2026-09-01, opening two thousand:
+
+        the 1st   +18,000 ->  20,000
+        the 5th   -12,000 ->   8,000
+        the 8th   - 3,000 ->   5,000
+        the 10th  -15,000 -> -10,000   <- first runs short here
+        the 12th  - 6,000 -> -16,000   <- the gap if everything is paid on time
+
+    Cutting the subscriptions lifts the worst day to -13,000 and giving up the
+    unsecured loan lifts it to -7,000, which is where the ladder runs out: rent
+    and the school fee are essentials and are never given up.
+    """
+    session = Session(as_of=AS_OF)
+    for kwargs in (
+        {"kind": "cash_on_hand", "label": "Cash on hand", "amount_rupees": 2_000},
+        {"kind": "income", "label": "Salary", "amount_rupees": 18_000, "day_of_month": 1},
+        {"kind": "essential", "label": "Rent", "amount_rupees": 12_000, "day_of_month": 5},
+        {"kind": "optional", "label": "Subscriptions", "amount_rupees": 3_000, "day_of_month": 8},
+        {"kind": "essential", "label": "School fee", "amount_rupees": 15_000, "day_of_month": 10},
+        {"kind": "loan_emi", "label": "Personal loan EMI", "amount_rupees": 6_000, "day_of_month": 12},
+    ):
+        call(record_money_fact, session, **kwargs)
+
+    payload = call(compute_plan, session)
+
+    assert payload["first_runs_short_on"] == "the tenth"
+    assert payload["still_short_after_all_that"] == "seven thousand rupees"
+    assert payload["gap_if_everything_is_paid_on_time"] == "sixteen thousand rupees"
+    assert [a["label"] for a in payload["spending_to_cut"]] == ["Subscriptions"]
+    assert [a["label"] for a in payload["cannot_be_paid"]] == ["Personal loan EMI"]
