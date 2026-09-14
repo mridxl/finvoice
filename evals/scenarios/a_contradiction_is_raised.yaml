@@ -29,9 +29,11 @@ turns:
           - name: flag_conflict
       - event: response
         eval: >-
-          tells the user the two figures disagree and asks which is right. It
-          must not pick one itself, and must not split the difference between
-          them.
+          states both figures and asks which is right. It must not pick one, must
+          not split the difference, and must not say it has noted, recorded or
+          updated either figure — saying so reads as having chosen that one, and
+          a lenient judge will wave it through unless the criterion says this
+          outright.
 
   - user: "I checked the statement. It's eight thousand five hundred."
     expect:
