@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.local
+*.key
+
+# Local working notes — never submitted
+journal-ai.md
+scratch/
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Eval output
+evals/results/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
