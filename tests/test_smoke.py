@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from server import providers
+from server import main, providers
 from server.config import Config
 from server.main import app
 
@@ -124,3 +124,20 @@ def test_an_unknown_provider_does_not_crash_the_complaint_itself():
     # It has no default of its own to suggest, and building the message must
     # not be the thing that fails.
     assert Config(llm_provider="anthropic", llm_model="gpt-5-mini").model_mismatch()
+
+
+def test_connecting_without_the_keys_says_which_ones(monkeypatch):
+    # The first thing anyone hits with a half-filled .env. It must name the gap
+    # rather than fail somewhere inside Daily's REST client, and it must not
+    # leave a half-started call behind.
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "server.main.config", SimpleNamespace(missing_keys=lambda: ["DAILY_API_KEY"])
+    )
+    with TestClient(app) as configured_client:
+        response = configured_client.post("/api/connect")
+
+    assert response.status_code == 503
+    assert response.json()["missing_env"] == ["DAILY_API_KEY"]
+    assert main._calls == {}

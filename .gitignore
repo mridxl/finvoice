@@ -34,3 +34,4 @@ eval-runs/
 Thumbs.db
 .idea/
 .vscode/
+*.tsbuildinfo
