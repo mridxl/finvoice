@@ -135,11 +135,31 @@ sent.
 
 ## Running
 
+**The backend cannot run natively on Windows.** `daily-python` publishes wheels only for
+`manylinux_2_28_{x86_64,aarch64}` and macOS — there is no `win_amd64` build. `uv sync` on
+a Windows host fails at resolution, not at runtime. Use Docker or WSL; never debug this
+as if it were a local environment problem.
+
 ```bash
 docker compose up --build     # the only supported start command; serves :8080
-uv run pytest                 # domain tests
+```
+
+Tests and lint run outside the container — the image deliberately contains no tests and
+no dev tooling (`.dockerignore` excludes `tests/` and `evals/`; the runtime venv is built
+with `--no-dev`). Keep it that way.
+
+```bash
+uv sync --group dev
+uv run pytest -q
+uv run ruff check .
 pipecat eval run evals/scenarios/*.yaml   # behavioural evals
 ```
+
+On a Windows host, run these from a Linux environment (WSL or the equivalent) and point
+`UV_PROJECT_ENVIRONMENT` at a native Linux path — a venv is thousands of small files and
+resolving it across the Windows mount is slow.
+
+`uv.lock` is resolved on Linux and committed. Do not regenerate it on Windows.
 
 No second terminal may ever be required to start the app. That is a hard submission
 requirement.
