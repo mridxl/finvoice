@@ -5,8 +5,8 @@ loans, income landing on different dates, and usually less money than the month 
 
 Built on [Pipecat](https://pipecat.ai) and [Daily](https://daily.co).
 
-> **Current state:** the planner, the agent and its tools are in place and the whole
-> conversation can be driven as text through the eval harness. Audio is not wired up yet —
+> **Current state:** the planner, the agent, its tools and its prompt are in place, and
+> the pipeline can be driven as text through the eval harness. Audio is not wired up yet —
 > the app serves a status page and reports its provider configuration at `/api/health`.
 
 ---
