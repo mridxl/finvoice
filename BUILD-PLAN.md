@@ -1,7 +1,6 @@
 # BUILD PLAN — FinVoice
 
-Read `SPEC.md` for the brief. Read `prerequisites.md` for the background concepts.
-This file is what we build and in what order.
+Read `SPEC.md` for the brief. This file is what we build and in what order.
 
 ---
 
@@ -96,7 +95,6 @@ finvoice/
   README.md
   SPEC.md
   BUILD-PLAN.md
-  prerequisites.md
   CLAUDE.md
   DECISIONS.md               # <- YOU write this, by hand
 
