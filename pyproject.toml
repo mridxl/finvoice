@@ -1,0 +1,34 @@
+[project]
+name = "finvoice"
+version = "0.1.0"
+description = "Real-time voice assistant for 30-day financial planning"
+requires-python = ">=3.12"
+dependencies = [
+    # Pinned exactly: Pipecat 1.x has had breaking changes across minor versions.
+    # cartesia and openai need no extra — openai is a core dependency, and the
+    # Cartesia service runs over core websockets.
+    "pipecat-ai[daily,deepgram]==1.10.0",
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.32.0",
+    "python-dotenv>=1.0.0",
+    "aiohttp>=3.11.12",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",  # fastapi.testclient
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.uv]
+package = false

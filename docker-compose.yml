@@ -1,0 +1,13 @@
+services:
+  finvoice:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      # Absent .env is tolerated so the container still starts and /api/health
+      # reports exactly which variables are missing.
+      - path: .env
+        required: false
+    environment:
+      PORT: "8080"
+    restart: unless-stopped
