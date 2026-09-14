@@ -49,8 +49,13 @@ def make_llm(system_instruction: str):
 
         return OpenAILLMService(
             api_key=config.openai_api_key,
-            model=config.llm_model,
-            settings=OpenAILLMService.Settings(system_instruction=system_instruction),
+            settings=OpenAILLMService.Settings(
+                model=config.llm_model,
+                # The prompt lives on the service rather than in the context, so
+                # replacing the context cannot drop it. An eval seeds a
+                # conversation exactly that way.
+                system_instruction=system_instruction,
+            ),
         )
     raise ValueError(f"unknown LLM_PROVIDER: {config.llm_provider!r}")
 
