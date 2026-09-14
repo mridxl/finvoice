@@ -6,19 +6,40 @@ that lets `/api/health` report configuration without needing valid keys.
 
 import os
 from dataclasses import dataclass, field
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
+
+INDIA = ZoneInfo("Asia/Kolkata")
 
 
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def _as_of() -> date:
+    """The date the plan is made from. Today in India, unless pinned.
+
+    `domain/` never reads a clock, so the date enters the process here and
+    nowhere else. The zone is explicit because a server running in UTC is a day
+    behind its user for the first five and a half hours of every Indian day, and
+    "the fifth" would then mean the wrong fifth. Pinning `AS_OF` makes a run
+    reproducible, which is what lets an eval assert on a day of the month.
+    """
+    value = _env("AS_OF")
+    return date.fromisoformat(value) if value else datetime.now(INDIA).date()
+
+
 @dataclass(frozen=True)
 class Config:
     port: int = int(_env("PORT", "8080"))
+    # Pipecat logs at debug by default and is chatty enough to put key material
+    # on screen. Anything louder than info is a deliberate act.
+    log_level: str = _env("LOG_LEVEL", "INFO").upper()
+    as_of: date = field(default_factory=_as_of)
 
     llm_provider: str = _env("LLM_PROVIDER", "openai")
     stt_provider: str = _env("STT_PROVIDER", "deepgram")
