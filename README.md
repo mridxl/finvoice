@@ -125,6 +125,14 @@ uv run python -m server.eval_bot --port 7860 --as-of 2026-09-01
 uv run python -m pipecat.evals run evals/scenarios/the_month_does_not_work.yaml -v
 ```
 
+Most scenarios judge *behaviour*, so they carry a natural-language `eval:` criterion
+rather than an expected string. `numbers_come_from_the_planner` is the exception: every
+fact in it is dated, which makes the plan computed from it determinate, so the figures the
+assistant speaks are asserted literally with `text_contains` and never reach the judge at
+all. Without it the suite could catch a regression in what the model *records* but not one
+in what the planner *computes* — `tests/test_planner.py` checks the arithmetic, and this
+checks that the answer reaches the user unchanged.
+
 The judge follows `LLM_PROVIDER` too, so one switch moves the bot and its examiner
 together and you can never end up grading a Gemini conversation with a provider you have
 no credit for. It deliberately does *not* follow `LLM_MODEL`: a yardstick that moves when

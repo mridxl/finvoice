@@ -444,7 +444,10 @@ but the yardstick stays on its provider's default, because a measure that moves 
 the thing being measured is tuned is not a measure. Judging a model with its own family
 shares blind spots — acceptable only because every criterion in `evals/scenarios/` asks
 about something observable (did it state a figure, did it claim to have contacted a
-lender) rather than about subtle quality.
+lender) rather than about subtle quality. The one thing no judge is trusted with is the
+arithmetic: `numbers_come_from_the_planner` pins the figures with `text_contains`, so
+whether the assistant said "seven thousand rupees" is settled by a substring and not by
+an opinion.
 
 ---
 
