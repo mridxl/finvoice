@@ -2,8 +2,12 @@
 # the whole system runs as one container on one port.
 FROM node:24-slim AS web
 WORKDIR /web
-COPY web/package.json ./
-RUN npm install
+# The lockfile comes too, and `npm ci` installs exactly what it pins and fails
+# if the two have drifted. `npm install` would silently resolve something newer,
+# so the image would stop matching the tree it was built from — the same reason
+# uv.lock is committed and `uv sync` is used below.
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
 COPY web/ ./
 RUN npm run build
 
