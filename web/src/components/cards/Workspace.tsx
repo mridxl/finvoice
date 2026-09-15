@@ -63,8 +63,8 @@ function Gathering({ deck, lit, covered }: { deck: Deck; lit: Set<CardId>; cover
           Still working out the month.
         </h2>
         <p className="text-muted-foreground mt-2 text-sm text-pretty">
-          A few things still to cover. Leave one out and whatever looks left over at the end would
-          be bigger than it really is.
+          A few things still to cover. Leave one out and the amount left over at the end will look
+          bigger than it really is.
         </p>
       </header>
 
@@ -126,7 +126,7 @@ const READY: Record<Status, string> = {
 };
 
 const GROUPS = [
-  { id: "income", title: "Money coming in" },
+  { id: "income", title: "Income" },
   { id: "essentials", title: "Essentials" },
   { id: "obligations", title: "Loans and cards" },
   { id: "optionals", title: "Optional spending" },
