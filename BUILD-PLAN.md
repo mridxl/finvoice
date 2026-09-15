@@ -508,9 +508,9 @@ an opinion.
 to first byte is under 100ms and a voice call has about a second to work with. Pointing
 both speech seams at OpenAI drops the system to two accounts — `DAILY_API_KEY` and
 `OPENAI_API_KEY` — for roughly 200–400ms more per reply, which is a large share of that
-budget. `TTS_PROVIDER=deepgram` is the middle option and the one to reach for when a
-Cartesia key runs dry: `DEEPGRAM_API_KEY` then covers both seams, and the failure it fixes
-is a call that connects and never speaks.
+budget. `TTS_PROVIDER=deepgram` is the middle option: one account fewer than the default,
+with `DEEPGRAM_API_KEY` covering both speech seams, at a time to first byte between the
+other two.
 
 **Both model families reason before answering, and both have to be turned down.**
 `gpt-5.6-luna` defaults to `medium`, which cost **12.3 seconds of silence** to produce the

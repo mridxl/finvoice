@@ -43,9 +43,8 @@ with a 503 rather than failing after you have joined a room.
 | `OPENAI_API_KEY` | The model, and OpenAI's STT or TTS. | any seam points at `openai` | [platform.openai.com](https://platform.openai.com/api-keys) |
 | `GOOGLE_API_KEY` | The model, on Gemini. Create it fresh in AI Studio — Google rejects unrestricted and dormant keys. | `LLM_PROVIDER=google` | [aistudio.google.com](https://aistudio.google.com/apikey) |
 
-**If Cartesia runs out of credit**, set `TTS_PROVIDER=deepgram`. `DEEPGRAM_API_KEY` then
-covers both speech seams and the Cartesia account is not needed at all. The symptom is a
-call that connects and never speaks.
+**To run on one fewer account**, set `TTS_PROVIDER=deepgram`: `DEEPGRAM_API_KEY` then covers
+both speech seams and no Cartesia account is needed.
 
 **To run on two accounts**, set `STT_PROVIDER=openai` and `TTS_PROVIDER=openai`: the whole
 system then needs only `DAILY_API_KEY` and `OPENAI_API_KEY`. It costs roughly 200–400ms per
