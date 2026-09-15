@@ -26,11 +26,13 @@ export function App() {
   const missing = health?.missing_env ?? [];
 
   // The button would otherwise call client.connect() with no arguments, which
-  // has no idea where the room is. Starting the call is the server's job.
+  // has no idea where the room is. Starting the call is the server's job, and
+  // startBotAndConnect is the call that says so — connect() with an endpoint is
+  // deprecated and warns in the console.
   async function startCall() {
     setError(null);
     try {
-      await client?.connect(CONNECT);
+      await client?.startBotAndConnect(CONNECT);
     } catch (e) {
       setError(String(e));
     }

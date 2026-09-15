@@ -94,9 +94,11 @@ async def connect() -> JSONResponse:
     task.add_done_callback(lambda _: _calls.pop(call_id, None))
 
     log.info("call %s starting", call_id)
-    return JSONResponse(
-        {"dailyRoom": call.room_url, "dailyToken": call.user_token, "sessionId": call_id}
-    )
+    # Exactly the two keys the client reads. Pipecat's own dev runner also returns
+    # a sessionId, which this client version does not recognise and complains
+    # about in the console — the id is ours for correlating logs, not the
+    # browser's, so it stays on this side.
+    return JSONResponse({"dailyRoom": call.room_url, "dailyToken": call.user_token})
 
 
 async def _run_call(call_id: str, call: daily.Call, session: Session) -> None:
