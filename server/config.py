@@ -28,7 +28,13 @@ def _env(name: str, default: str = "") -> str:
 # because one shared default would mean selecting Google and forgetting the
 # model sends an OpenAI model name to Gemini, which fails somewhere far from
 # the mistake.
-DEFAULT_LLM_MODELS = {"openai": "gpt-5-mini", "google": "gemini-3.8-flash"}
+DEFAULT_LLM_MODELS = {"openai": "gpt-5.6-luna", "google": "gemini-3.8-flash"}
+
+# Reasoning efforts `gpt-5.6-luna` documents, in its own order. Checked against
+# OpenAI's model page rather than assumed: the set is per-model, and it does not
+# include "minimal" — naming it after the Gemini setting would earn a 400 on the
+# first turn, which is the failure this list exists to prevent.
+REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh", "max")
 
 # What each seam may actually be pointed at. `providers.py` branches on exactly
 # these names and raises on anything else — which used to be discovered on the
@@ -81,6 +87,16 @@ class Config:
     # it will happily send a level the model refuses — which is why this is a
     # setting, and why its default is the one the default model actually takes.
     thinking_level: str = _env("GEMINI_THINKING_LEVEL", "low")
+
+    # OpenAI's half of the same problem, and it had no control at all until a
+    # call spent twelve seconds of silence producing a greeting. GPT-5 models
+    # reason before answering and default to "medium".
+    #
+    # "low", not "none": OpenAI's own guidance puts tool use and multi-step
+    # decisions — which is the whole of this agent — under "low", and reserves
+    # "none" for classification and retrieval. Drop it to "none" if the silence
+    # still costs more than the judgement is worth.
+    reasoning_effort: str = _env("OPENAI_REASONING_EFFORT", "low")
 
     # smart | vad. Smart Turn v3 judges whether an utterance sounds finished;
     # a fixed silence threshold either clips people mid-number or feels slow.
@@ -143,11 +159,19 @@ class Config:
             "STT_PROVIDER": self.stt_provider,
             "TTS_PROVIDER": self.tts_provider,
         }
-        return [
+        complaints = [
             f"{name}={value!r} is not one of: {', '.join(PROVIDERS[name])}"
             for name, value in chosen.items()
             if value not in PROVIDERS[name]
         ]
+        # Caught here rather than by the API, because the API catches it on the
+        # first turn — mid-call, after the caller has already said hello.
+        if self.llm_provider == "openai" and self.reasoning_effort not in REASONING_EFFORTS:
+            complaints.append(
+                f"OPENAI_REASONING_EFFORT={self.reasoning_effort!r} is not one of: "
+                f"{', '.join(REASONING_EFFORTS)}"
+            )
+        return complaints
 
     def missing_keys(self) -> list[str]:
         """Required env vars that are absent, given the selected providers."""

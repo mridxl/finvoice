@@ -1,7 +1,7 @@
 """The provider seam.
 
 Every STT / TTS / LLM construction goes through here, selected by env. Defaults
-are Deepgram + Cartesia + OpenAI gpt-5-mini, with Gemini as the other model
+are Deepgram + Cartesia + OpenAI gpt-5.6-luna, with Gemini as the other model
 option; the seam exists so that choice stays reversible without touching the
 pipeline, which is the whole reason swapping the model is an env var rather than
 a rewrite.
@@ -76,6 +76,12 @@ def make_llm(system_instruction: str):
                 # replacing the context cannot drop it. An eval seeds a
                 # conversation exactly that way.
                 system_instruction=system_instruction,
+                # Same reason the Gemini branch pins thinking, and it had no
+                # equivalent here until a call spent twelve seconds of silence
+                # on a greeting. `extra` is Pipecat's documented catch-all for
+                # provider keys it declares no field for, and
+                # `build_chat_completion_params` merges it into the request.
+                extra={"reasoning_effort": config.reasoning_effort},
             ),
         )
     if config.llm_provider == "google":
@@ -124,6 +130,11 @@ def describe() -> dict[str, str]:
         "tts": config.tts_provider,
         "turn_detection": config.turn_detection,
     }
+    # Whichever knob is live, under one name: both are "how long it thinks
+    # before it says anything", and on a voice call that is the number worth
+    # seeing in Stats for nerds.
     if config.llm_provider == "google":
         described["thinking"] = config.thinking_level
+    elif config.llm_provider == "openai":
+        described["thinking"] = config.reasoning_effort
     return described

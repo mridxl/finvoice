@@ -32,7 +32,7 @@ def test_describe_is_key_free():
 
 @pytest.mark.parametrize(
     ("provider", "model"),
-    [("openai", "gpt-5-mini"), ("google", "gemini-3.8-flash")],
+    [("openai", "gpt-5.6-luna"), ("google", "gemini-3.8-flash")],
 )
 def test_the_model_defaults_to_one_the_selected_provider_actually_serves(provider, model):
     # Selecting Google and forgetting the model must not send an OpenAI model
@@ -156,10 +156,10 @@ def test_a_provider_we_do_not_support_fails_loudly(monkeypatch):
 def test_a_model_left_pinned_for_the_other_provider_is_called_out():
     # The exact trap the per-provider default exists to avoid: LLM_MODEL pinned
     # in .env for one provider and left behind when the provider is switched.
-    cfg = Config(llm_provider="google", llm_model="gpt-5-mini")
+    cfg = Config(llm_provider="google", llm_model="gpt-5.6-luna")
     complaint = cfg.model_mismatch()
     assert complaint is not None
-    assert "gpt-5-mini" in complaint and "gemini-3.8-flash" in complaint
+    assert "gpt-5.6-luna" in complaint and "gemini-3.8-flash" in complaint
 
 
 def test_a_model_the_provider_can_serve_draws_no_complaint():
@@ -168,10 +168,20 @@ def test_a_model_the_provider_can_serve_draws_no_complaint():
     assert Config(llm_provider="openai", llm_model="gpt-4o").model_mismatch() is None
 
 
+def test_a_reasoning_effort_the_model_rejects_is_caught_before_the_call():
+    # "minimal" is the Gemini spelling and gpt-5.6-luna does not take it. The
+    # API would say so on the first turn, mid-call; this says so at startup.
+    complaints = Config(llm_provider="openai", reasoning_effort="minimal").unknown_providers()
+    assert any("OPENAI_REASONING_EFFORT" in c and "minimal" in c for c in complaints)
+    assert Config(llm_provider="openai", reasoning_effort="none").unknown_providers() == []
+    # Only OpenAI reads it, so a Gemini run is not held to OpenAI's vocabulary.
+    assert Config(llm_provider="google", reasoning_effort="minimal").unknown_providers() == []
+
+
 def test_an_unknown_provider_does_not_crash_the_complaint_itself():
     # It has no default of its own to suggest, and building the message must
     # not be the thing that fails.
-    assert Config(llm_provider="anthropic", llm_model="gpt-5-mini").model_mismatch()
+    assert Config(llm_provider="anthropic", llm_model="gpt-5.6-luna").model_mismatch()
 
 
 def test_connecting_without_the_keys_says_which_ones(monkeypatch):

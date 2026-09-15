@@ -439,6 +439,7 @@ TTS_PROVIDER=cartesia
 
 LLM_MODEL=                # blank takes the selected provider's default
 GEMINI_THINKING_LEVEL=low       # 3.8-flash and 3.7-flash reject 'minimal'
+OPENAI_REASONING_EFFORT=low     # gpt-5.6-luna: none|low|medium|high|xhigh|max
 
 OPENAI_API_KEY=
 GOOGLE_API_KEY=
@@ -477,6 +478,22 @@ both speech seams at OpenAI drops the system to two accounts — `DAILY_API_KEY`
 budget. `TTS_PROVIDER=deepgram` is the middle option and the one to reach for when a
 Cartesia key runs dry: `DEEPGRAM_API_KEY` then covers both seams, and the failure it fixes
 is a call that connects and never speaks.
+
+**Both model families reason before answering, and both have to be turned down.**
+`gpt-5.6-luna` defaults to `medium`, which cost **12.3 seconds of silence** to produce the
+opening greeting on a real call — measured, not estimated. Pipecat 1.10.0 declares no
+`reasoning_effort` field, but `LLMSettings.extra` is its documented catch-all and
+`build_chat_completion_params` merges it into the request, so no subclass is needed.
+
+The accepted values are **per model** and were read off OpenAI's model page rather than
+assumed: `gpt-5.6-luna` takes `none, low, medium, high, xhigh, max` and **has no
+`minimal`** — naming the setting after the Gemini one would have earned a 400 on the first
+turn. `config.unknown_providers()` therefore validates it at startup, alongside the
+provider names, so a bad value is caught before a room is minted rather than mid-call.
+
+`low` is the default because OpenAI's guidance puts tool use and multi-step decisions there
+and reserves `none` for classification and retrieval; this agent picks among nine tools on
+every turn.
 
 **`GEMINI_THINKING_LEVEL` is pinned for the same reason `VAD_STOP_SECS` is** — the default
 is wrong for this workload. Gemini 3 models think before answering; those tokens cost

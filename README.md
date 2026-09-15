@@ -53,8 +53,9 @@ reply against Cartesia's sub-100ms time to first byte.
 | Variable | Default | Notes |
 |---|---|---|
 | `LLM_PROVIDER` | `openai` | `openai` or `google` |
-| `LLM_MODEL` | per provider | Blank picks the provider's default: `gpt-5-mini`, or `gemini-3.8-flash` |
+| `LLM_MODEL` | per provider | Blank picks the provider's default: `gpt-5.6-luna`, or `gemini-3.8-flash` |
 | `GEMINI_THINKING_LEVEL` | `low` | Gemini only. `minimal`/`low`/`medium`/`high`. `gemini-3.8-flash` and `3.7-flash` reject `minimal` with a 400 on the first turn |
+| `OPENAI_REASONING_EFFORT` | `low` | OpenAI only. `none`/`low`/`medium`/`high`/`xhigh`/`max` for `gpt-5.6-luna`. The model's own default is `medium`, which costs seconds of silence per turn; `none` is faster still but OpenAI reserves it for classification and retrieval rather than tool use |
 | `STT_PROVIDER` | `deepgram` | `deepgram` or `openai` |
 | `TTS_PROVIDER` | `cartesia` | `cartesia`, `deepgram` (`aura-2-helena-en`), or `openai` |
 | `TURN_DETECTION` | `smart` | `smart` = Smart Turn v3 semantic end-of-turn; `vad` = fixed silence threshold |
