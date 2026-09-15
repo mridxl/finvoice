@@ -48,6 +48,17 @@ export type GapItem = {
   ask: string;
 };
 
+/** One of the four categories the intake has to get through, as the server
+ *  ranks them. `partly` means something is recorded and nobody has said it is
+ *  all of it, which is not the same as finished. */
+export type CoverageItem = {
+  id: string;
+  label: string;
+  state: "empty" | "partly" | "done";
+  /** The one the agent is working through right now. */
+  current: boolean;
+};
+
 export type Entry = { label: string; kind: string; amount: Amount };
 export type LedgerRow = { on: string; entries: Entry[]; closing: Amount };
 export type CalendarDay = { on: string; net: Amount; closing: Amount; negative: boolean };
@@ -66,7 +77,14 @@ export type Bodies = {
     first_shortfall_on: string | null;
     assumptions: string[];
   };
-  missing_info: { items: GapItem[] };
+  missing_info: {
+    items: GapItem[];
+    /** No question left that would change the plan. The same test the agent
+     *  gets back from `open_questions`, so the screen and the voice switch
+     *  phase together instead of a turn apart. */
+    enough_information: boolean;
+    coverage: CoverageItem[];
+  };
   actions: { cuts: ActionItem[]; arranged: ActionItem[]; unpaid: ActionItem[] };
   ledger: { rows: LedgerRow[] };
 };

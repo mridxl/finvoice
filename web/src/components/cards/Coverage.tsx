@@ -5,53 +5,23 @@
  * stressful place to be left. Four categories, and each one is either untouched,
  * started, or closed by the user saying that is all of it.
  *
- * Read straight off the gaps the server already sends. A category that has been
- * settled sends no gap at all — absence is the signal, and absence cannot name
- * itself, which is the one reason the category list is mirrored here rather
- * than derived from the payload.
+ * The states are the server's, read off `missing_info.coverage`. They used to be
+ * derived here from the gaps, which meant mirroring the category list: a settled
+ * category sends no gap at all, and absence cannot name itself. Two copies of
+ * `COVERAGE` was one too many — this file now renders four rows and decides
+ * nothing.
  */
 
-import type { GapItem } from "@/cards";
+import type { CoverageItem } from "@/cards";
 import { cn } from "@/lib/utils";
 
-/** `COVERAGE` in `server/domain/gaps.py`, in the order the agent asks. */
-const CATEGORIES = [
-  { id: "money_in", label: "Income" },
-  { id: "essentials", label: "Essentials" },
-  { id: "loans", label: "Loans" },
-  { id: "cards", label: "Cards" },
-] as const;
-
-type State = "empty" | "partly" | "done";
-
-export type Covered = {
-  id: string;
-  label: string;
-  state: State;
-  /** The one the agent is working through right now. */
-  current: boolean;
-};
-
-export function coverage(gaps: GapItem[]): Covered[] {
-  const open = new Map(gaps.filter((gap) => gap.coverage).map((gap) => [gap.fact_id, gap]));
-  // The server ranks untouched categories first and unclosed ones last, each
-  // in its own asking order, so the head of the coverage list is what the next
-  // question is about — whether it is opening a category or sweeping one.
-  const asking = gaps.find((gap) => gap.coverage)?.fact_id;
-  return CATEGORIES.map((category) => {
-    const gap = open.get(category.id);
-    const state: State = !gap ? "done" : gap.field === "existence" ? "empty" : "partly";
-    return { id: category.id, label: category.label, state, current: category.id === asking };
-  });
-}
-
-const WORD: Record<State, string> = {
+const WORD: Record<CoverageItem["state"], string> = {
   done: "Done",
   partly: "Partly",
   empty: "Not yet",
 };
 
-export function Coverage({ items }: { items: Covered[] }) {
+export function Coverage({ items }: { items: CoverageItem[] }) {
   return (
     <ol className="grid grid-cols-4 gap-2.5">
       {items.map((item) => (

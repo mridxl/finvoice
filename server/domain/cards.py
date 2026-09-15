@@ -12,7 +12,7 @@ from dataclasses import asdict
 from datetime import date
 
 from server.domain.events import Fact
-from server.domain.gaps import Gap
+from server.domain.gaps import COVERAGE, Gap
 from server.domain.money import Money, format_rupees, speak_rupees
 from server.domain.planner import Action, LedgerRow, PlanOutcome
 from server.domain.state import FinancialState
@@ -28,6 +28,16 @@ TITLES = {
     "missing_info": "Still to confirm",
     "actions": "Proposed actions",
     "ledger": "Day by day",
+}
+
+# `COVERAGE` in `server/domain/gaps.py` says why each category has to be asked
+# about. These are the same four said short enough to sit in four columns on a
+# laptop, where "Credit card payments" is two words of truncation.
+STRIP = {
+    "money_in": "Income",
+    "essentials": "Essentials",
+    "loans": "Loans",
+    "cards": "Cards",
 }
 
 
@@ -53,7 +63,16 @@ def build_cards(
             "first_shortfall_on": _iso(outcome.first_shortfall_on),
             "assumptions": list(outcome.assumptions),
         },
-        "missing_info": {"items": [asdict(g) for g in gaps]},
+        "missing_info": {
+            "items": [asdict(g) for g in gaps],
+            # The same test `open_questions` hands the model, so the screen and
+            # the voice change phase on one signal rather than two. While this
+            # is false the assistant is under orders not to say what is left
+            # over, and a screen that shows it anyway is the one contradicting
+            # the call.
+            "enough_information": not gaps,
+            "coverage": _coverage(gaps),
+        },
         "actions": {
             "cuts": [_action(a) for a in outcome.cuts],
             "arranged": [_action(a) for a in outcome.arranged],
@@ -71,6 +90,33 @@ def build_cards(
         }
         for card_id, body in bodies.items()
     }
+
+
+def _coverage(gaps: tuple[Gap, ...]) -> list[dict]:
+    """How far the intake has got, one entry per category, in asking order.
+
+    A settled category sends no gap at all, so the state is read from what is
+    absent — which is why the list is built from `COVERAGE` here rather than
+    from the gaps alone. `partly` is the distinction the screen exists for:
+    something is recorded, and nobody has yet said it is all of it.
+    """
+    open_gaps = {g.fact_id: g for g in gaps if g.coverage}
+    asking = next((g.fact_id for g in gaps if g.coverage), None)
+    return [
+        {
+            "id": cat.fact_id,
+            "label": STRIP[cat.fact_id],
+            "state": _state(open_gaps.get(cat.fact_id)),
+            "current": cat.fact_id == asking,
+        }
+        for cat in COVERAGE
+    ]
+
+
+def _state(gap: Gap | None) -> str:
+    if gap is None:
+        return "done"
+    return "empty" if gap.field == "existence" else "partly"
 
 
 def _money(amount: Money) -> dict:

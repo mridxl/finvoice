@@ -8,7 +8,7 @@ from server.domain.gaps import rank_gaps
 from server.domain.money import from_rupees
 from server.domain.planner import plan
 from server.domain.state import fold
-from tests.golden import AS_OF, GOLDEN, SWEPT
+from tests.golden import AS_OF, GOLDEN, SWEPT, fact
 
 
 def cards_for(log):
@@ -99,3 +99,33 @@ def test_the_actions_card_shows_an_arrangement_with_what_remains_owed():
     arranged = body["arranged"][0]
     assert arranged["paid"]["text"] == "4,500"
     assert arranged["outstanding"]["text"] == "5,000"
+
+
+def test_a_started_category_is_not_a_finished_one():
+    # The regression this exists for: the screen switched to the plan as soon as
+    # every category had something in it, which is the middle of the intake. One
+    # loan recorded is "partly" until the user says it is the only one.
+    strip = {c["id"]: c["state"] for c in cards_for(GOLDEN)["missing_info"]["body"]["coverage"]}
+    assert strip == {"money_in": "partly", "essentials": "partly", "loans": "partly", "cards": "partly"}
+    assert not cards_for(GOLDEN)["missing_info"]["body"]["enough_information"]
+
+
+def test_a_category_nobody_has_mentioned_is_empty_and_is_the_one_being_asked():
+    body = cards_for([fact("salary", "income", "Salary", 38_000, day=1)])["missing_info"]["body"]
+    strip = {c["id"]: c["state"] for c in body["coverage"]}
+    assert strip == {"money_in": "partly", "essentials": "empty", "loans": "empty", "cards": "empty"}
+    # Untouched categories are asked about before sweeps, in COVERAGE's own order.
+    assert [c["id"] for c in body["coverage"] if c["current"]] == ["essentials"]
+
+
+def test_there_is_enough_information_only_when_no_question_is_left():
+    # Closing all four categories is not the end of it: the spouse income still
+    # arrives somewhere between the tenth and the twentieth, and which end it
+    # lands on changes the plan. The agent is still asking, so the screen waits.
+    swept = cards_for([*GOLDEN, *SWEPT])["missing_info"]["body"]
+    assert [c["state"] for c in swept["coverage"]] == ["done"] * 4
+    assert not swept["enough_information"]
+
+    settled = cards_for([*GOLDEN, *SWEPT, FactCorrected("spouse", day=12, turn=9)])
+    assert settled["missing_info"]["body"]["enough_information"]
+    assert settled["missing_info"]["body"]["items"] == []

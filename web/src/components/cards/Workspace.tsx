@@ -9,35 +9,57 @@
  *
  * So there are two screens. The first says what has been covered and what has
  * been heard back. The second says what the month does and what has to give
- * way. The switch is the server's own coverage signal, not a timer and not a
- * guess: every category has either been settled or has something in it.
+ * way. The switch is `enough_information`, which is the same test the agent
+ * gets back from `open_questions` — the screen shows the figures exactly when
+ * the agent is allowed to say them, and not a turn before.
+ *
+ * It used to switch as soon as no category was empty, which is one fact in each
+ * of the four. That is the middle of the intake, not the end of it: having
+ * recorded a loan is not the same as having been told it is the only one, and
+ * the plan appeared while the user was still listing them.
  */
 
 import { useLayoutEffect, useRef, useState } from "react";
 
-import type { Amount, CardId, Deck, Status } from "@/cards";
+import type { Amount, CardId, CoverageItem, Deck, Status } from "@/cards";
 import { cn } from "@/lib/utils";
 
 import { BalanceCurve } from "./BalanceCurve";
 import { Actions, BottomLine, FactList, MissingInfo } from "./Cards";
-import { Coverage, coverage, type Covered } from "./Coverage";
+import { Coverage } from "./Coverage";
 import { Ledger } from "./Ledger";
 import { Empty, PopNumber, Section, rupees, shortDate } from "./parts";
 
 export function Workspace({ deck, lit }: { deck: Deck; lit: Set<CardId> }) {
+  const info = deck.missing_info?.body;
+  const ready = useReady(deck.bottom_line !== undefined, info?.enough_information ?? false);
+
   if (!deck.bottom_line) return <Waiting />;
-  const covered = coverage(deck.missing_info?.body.items ?? []);
-  const gathering = covered.some((category) => category.state === "empty");
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-5">
-      {gathering ? (
-        <Gathering deck={deck} lit={lit} covered={covered} />
-      ) : (
+      {ready ? (
         <Ready deck={deck} lit={lit} />
+      ) : (
+        <Gathering deck={deck} lit={lit} covered={info?.coverage ?? []} />
       )}
     </div>
   );
+}
+
+/** Ready is one-way, for as long as the call lasts.
+ *
+ * Remembering a loan twenty minutes in reopens that category on the server, and
+ * the plan really is incomplete again — but the user is mid-discussion, and
+ * taking the plan off the screen to say so costs them their place in it. The
+ * reopened question comes back through "Still to check" instead, and every card
+ * still moves. A new call clears the deck, and the latch goes with it.
+ */
+function useReady(live: boolean, enough: boolean): boolean {
+  const [ready, setReady] = useState(false);
+  const next = live && (ready || enough);
+  if (next !== ready) setReady(next);
+  return next;
 }
 
 function Waiting() {
@@ -55,7 +77,19 @@ function Waiting() {
 /** Nothing here is a plan. What is on screen is the state of the conversation
  *  and a read-back of every figure given so far, which is the only thing the
  *  user can usefully check while they are still talking. */
-function Gathering({ deck, lit, covered }: { deck: Deck; lit: Set<CardId>; covered: Covered[] }) {
+function Gathering({
+  deck,
+  lit,
+  covered,
+}: {
+  deck: Deck;
+  lit: Set<CardId>;
+  covered: CoverageItem[];
+}) {
+  // Two different reasons to be on this screen, and they need different
+  // sentences: a category nobody has finished, or a figure that is still a
+  // range wide enough to change the answer.
+  const open = covered.some((category) => category.state !== "done");
   return (
     <>
       <header>
@@ -63,8 +97,9 @@ function Gathering({ deck, lit, covered }: { deck: Deck; lit: Set<CardId>; cover
           Still working out the month.
         </h2>
         <p className="text-muted-foreground mt-2 text-sm text-pretty">
-          A few things still to cover. Leave one out and the amount left over at the end will look
-          bigger than it really is.
+          {open
+            ? "A few things still to cover. Leave one out and the amount left over at the end will look bigger than it really is."
+            : "Everything is covered. A figure or two still to pin down, and each one changes what the month comes to."}
         </p>
       </header>
 
