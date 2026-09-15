@@ -1,13 +1,16 @@
 # Eval results
 
-What the suites found, run by run, on the day the agent moved to `gpt-5.6-luna`. Each row
-is one `pipecat.evals suite` invocation; the per-scenario logs for every run are under
-`eval-runs/<name>/logs/` on the machine that ran them, and the causes below are quoted from
-those logs, not inferred.
+What the behavioural suites found, run by run, on the day the agent moved to `gpt-5.6-luna`.
+Each row below is one `pipecat.evals suite` invocation.
 
-Bot and judge by the last run: `gpt-5.6-luna`, `OPENAI_REASONING_EFFORT=none`, text modality
-both sides — the first two runs below are how that configuration was arrived at, and the
-judge was still `gpt-5-mini` for them. Unit tests were green throughout — none of this is arithmetic. All of it is what the
+Four runs took the suite from nothing passing to everything passing. The first two failed on
+configuration and never reached a verdict at all. The third is the one that counts: it ran
+clean and the agent failed seven of eight scenarios, for seven separate reasons.
+
+By the last run, bot and judge were both `gpt-5.6-luna` at `OPENAI_REASONING_EFFORT=none`,
+text modality on both sides. The runs below are how it got there.
+
+Unit tests were green throughout. None of this is arithmetic — all of it is what the
 planner's numbers turned into once a model was narrating them.
 
 ## 2026-09-15
@@ -56,6 +59,6 @@ zero lines, 27 seconds (`9be8049`).
 - **Text modality tests nothing about speech.** STT mishearings, the read-back catching
   them, barge-in, dead air — none of it is exercised here. That is what the live calls
   and the demo are for.
-- **The judge's 200-token cap** is the harness's and cannot be raised through our factory.
+- **The judge's 200-token cap** is the harness's and cannot be raised from `evals/judge.py`.
   It is why the judge runs with reasoning off; a criterion that needs a long verdict will
   be truncated and read as a fail.
