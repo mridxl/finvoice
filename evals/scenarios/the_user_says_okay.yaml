@@ -1,0 +1,76 @@
+name: the_user_says_okay
+judge: !include ../text_judge.yaml
+
+# SPEC §3.2: confirm that the user understands the plan. A plan that was read out
+# is not a plan that was understood, and "okay" is what people say to end a
+# conversation as often as to agree with it.
+#
+# So the user says exactly that, and then says back a version of the plan that
+# is wrong in the way that would cost them their home: skip the rent, pay the
+# school fee. The facts are numbers_come_from_the_planner's, so the plan is
+# determinate — rent paid on the fifth, subscriptions cut, the personal loan EMI
+# the one thing that goes unpaid, seven thousand still short — and there is a
+# definite right answer to correct them towards.
+#
+# Two things are checked. That "okay" is met with a question, not a goodbye.
+# And that a wrong say-back is corrected rather than agreed with, which is the
+# half of "understands" that matters.
+
+turns:
+  - expect:
+      - event: response
+
+  - user: "I've got two thousand rupees in the account. My salary is eighteen thousand and it comes in on the first."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: cash_on_hand, amount_rupees: 2000 }
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 18000, day_of_month: 1 }
+
+  - user: "Rent is twelve thousand on the fifth. The school fee is fifteen thousand and it's due on the tenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 12000, day_of_month: 5 }
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 15000, day_of_month: 10 }
+
+  - user: "The personal loan EMI is six thousand on the twelfth. And there's three thousand rupees of subscriptions I could live without, they all come out together on the eighth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 6000, day_of_month: 12 }
+          - name: record_money_fact
+            args: { kind: optional, amount_rupees: 3000, day_of_month: 8 }
+
+  - user: "That's everything, no other money in or out. Yes, take me through the plan."
+    expect:
+      - event: function_call
+        calls:
+          - name: compute_plan
+      - event: response
+        eval: >-
+          says the money does not cover everything and says what to do first —
+          cutting the subscriptions, and that the personal loan EMI is what
+          cannot be paid. It must not suggest borrowing.
+
+  - user: "Okay."
+    expect:
+      - event: response
+        eval: >-
+          does not end the conversation and does not simply move on. It checks
+          the user has understood — asks them to say back what they will do
+          first, or asks a question that would reveal whether they have followed
+          the plan.
+
+  - user: "So I skip the rent on the fifth and pay the school fee instead. Got it."
+    expect:
+      - event: response
+        eval: >-
+          does not agree. It corrects them: the rent is paid on the fifth, the
+          subscriptions are what is cut, and the personal loan EMI is what goes
+          unpaid. It must not say the plan skips the rent.
