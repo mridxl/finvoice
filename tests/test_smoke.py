@@ -59,6 +59,54 @@ def test_missing_keys_lists_only_selected_providers():
     assert cfg.missing_keys() == ["OPENAI_API_KEY"]
 
 
+def test_deepgram_tts_alone_still_needs_the_deepgram_key():
+    """Deepgram serves both speech seams, so either one alone requires the key.
+
+    Asking only about STT reported a healthy configuration for a call that then
+    had no voice at all — the pipeline blocks connecting a TTS service it has no
+    key for, and the worker gives up eighteen seconds later.
+    """
+    cfg = Config(
+        llm_provider="openai",
+        stt_provider="openai",
+        tts_provider="deepgram",
+        daily_api_key="x",
+        openai_api_key="x",
+        deepgram_api_key="",
+        cartesia_api_key="",
+    )
+    assert cfg.missing_keys() == ["DEEPGRAM_API_KEY"]
+
+
+def test_a_plausible_wrong_provider_name_is_caught_before_a_call():
+    """`gemini` is the product's name; `google` is the one the factory branches on.
+
+    This reached a real caller as a traceback from `make_llm`, eighteen seconds
+    after they had joined the room. It is a configuration error, so it is
+    reported the way a missing key is: at startup, in `/api/health`, and as a
+    503 from `/api/connect` before any room is minted.
+    """
+    cfg = Config(llm_provider="gemini", daily_api_key="x", google_api_key="x")
+    assert cfg.unknown_providers() == ["LLM_PROVIDER='gemini' is not one of: openai, google"]
+
+
+def test_every_default_provider_is_one_the_factories_know():
+    assert Config(daily_api_key="x").unknown_providers() == []
+
+
+def test_deepgram_tts_does_not_ask_for_cartesia():
+    cfg = Config(
+        llm_provider="openai",
+        stt_provider="deepgram",
+        tts_provider="deepgram",
+        daily_api_key="x",
+        openai_api_key="x",
+        deepgram_api_key="x",
+        cartesia_api_key="",
+    )
+    assert cfg.missing_keys() == []
+
+
 def test_choosing_gemini_asks_for_the_google_key_instead():
     cfg = Config(
         llm_provider="google",
@@ -133,11 +181,31 @@ def test_connecting_without_the_keys_says_which_ones(monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(
-        "server.main.config", SimpleNamespace(missing_keys=lambda: ["DAILY_API_KEY"])
+        "server.main.config",
+        SimpleNamespace(missing_keys=lambda: ["DAILY_API_KEY"], unknown_providers=list),
     )
     with TestClient(app) as configured_client:
         response = configured_client.post("/api/connect")
 
     assert response.status_code == 503
     assert response.json()["missing_env"] == ["DAILY_API_KEY"]
+    assert main._calls == {}
+
+
+def test_connecting_with_an_unknown_provider_refuses_before_minting_a_room(monkeypatch):
+    # The keys are all present and every one of them is valid; the only thing
+    # wrong is a name. That used to mint a room, admit the caller, and raise
+    # from make_llm once they were already inside it.
+    from types import SimpleNamespace
+
+    complaint = "LLM_PROVIDER='gemini' is not one of: openai, google"
+    monkeypatch.setattr(
+        "server.main.config",
+        SimpleNamespace(missing_keys=list, unknown_providers=lambda: [complaint]),
+    )
+    with TestClient(app) as configured_client:
+        response = configured_client.post("/api/connect")
+
+    assert response.status_code == 503
+    assert response.json()["misconfigured"] == [complaint]
     assert main._calls == {}

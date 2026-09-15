@@ -43,7 +43,7 @@ what is missing for the combination you chose.
 | `DAILY_API_KEY` | WebRTC transport — creates the call room and mints join tokens. Server-side only; never reaches the browser. | always | [dashboard.daily.co/developers](https://dashboard.daily.co/developers) |
 | `OPENAI_API_KEY` | The conversational model, and OpenAI's STT or TTS. | any of the three seams points at `openai` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | `GOOGLE_API_KEY` | The conversational model, on Gemini. | `LLM_PROVIDER=google` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| `DEEPGRAM_API_KEY` | Streaming speech-to-text. | `STT_PROVIDER=deepgram` | [console.deepgram.com](https://console.deepgram.com/) |
+| `DEEPGRAM_API_KEY` | Streaming speech-to-text, and text-to-speech on Aura 2. One key covers both. | `STT_PROVIDER=deepgram` or `TTS_PROVIDER=deepgram` | [console.deepgram.com](https://console.deepgram.com/) |
 | `CARTESIA_API_KEY` | Streaming text-to-speech. | `TTS_PROVIDER=cartesia` | [play.cartesia.ai/keys](https://play.cartesia.ai/keys) |
 
 Missing keys don't stop the server — it starts and reports them. No call can be placed
@@ -61,11 +61,11 @@ today are auth keys and are fine. A key in either bad state is tagged in the con
 | `LLM_MODEL` | per provider | Blank picks the provider's default: `gpt-5-mini`, or `gemini-3.8-flash` |
 | `GEMINI_THINKING_LEVEL` | `low` | Gemini only. `minimal`/`low`/`medium`/`high`. `low` is the floor for 3.8-flash and 3.7-flash — both reject `minimal` outright |
 | `STT_PROVIDER` | `deepgram` | `deepgram` or `openai` |
-| `TTS_PROVIDER` | `cartesia` | `cartesia` or `openai` |
+| `TTS_PROVIDER` | `cartesia` | `cartesia`, `deepgram` (Aura 2, `aura-2-helena-en`), or `openai` |
 | `TURN_DETECTION` | `smart` | `smart` = Smart Turn v3 semantic end-of-turn; `vad` = fixed silence threshold |
 | `VAD_STOP_SECS` | `0.8` | Only read when `TURN_DETECTION=vad` |
 | `LOG_LEVEL` | `INFO` | Pipecat's debug output is chatty enough to print key material |
-| `AS_OF` | today, in India | Pins the date the 30 days are measured from, so a run is reproducible |
+| `AS_OF` | today, in India | ISO date the 30 days are measured from, so a run is reproducible. `AS_OF=2026-09-15` plans 15 Sep – 14 Oct |
 | `PORT` | `8080` | |
 
 **Fewer accounts, more latency.** Setting `STT_PROVIDER=openai` and `TTS_PROVIDER=openai`

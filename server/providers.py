@@ -41,6 +41,16 @@ def make_tts():
                 voice="86e30c1d-714b-4074-a1f2-1cb6b552fb49",
             ),
         )
+    if config.tts_provider == "deepgram":
+        from pipecat.services.deepgram.tts import DeepgramTTSService
+
+        # Aura 2, streaming over a websocket like Cartesia, so interruption
+        # still works. Named explicitly rather than left to the service default
+        # so the voice is a decision in the repo and not a vendor's.
+        return DeepgramTTSService(
+            api_key=config.deepgram_api_key,
+            settings=DeepgramTTSService.Settings(voice="aura-2-helena-en"),
+        )
     if config.tts_provider == "openai":
         from pipecat.services.openai.tts import OpenAITTSService
 

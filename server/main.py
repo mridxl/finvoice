@@ -36,6 +36,10 @@ _calls: dict[str, asyncio.Task] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("providers: %s", providers.describe())
+    # Said at startup, not on the first call. A provider name nothing can build
+    # used to reach the caller as a traceback, after they had joined the room.
+    for complaint in config.unknown_providers():
+        log.error("%s", complaint)
     missing = config.missing_keys()
     if missing:
         log.warning("missing env vars, voice will not start: %s", ", ".join(missing))
@@ -57,11 +61,13 @@ app = FastAPI(title="FinVoice", lifespan=lifespan)
 @app.get("/api/health")
 async def health() -> JSONResponse:
     missing = config.missing_keys()
+    unknown = config.unknown_providers()
     return JSONResponse(
         {
-            "status": "ok" if not missing else "needs-config",
+            "status": "ok" if not (missing or unknown) else "needs-config",
             "providers": providers.describe(),
             "missing_env": missing,
+            "misconfigured": unknown,
             "web_built": WEB_DIST.is_dir(),
             "calls_in_progress": len(_calls),
         }
@@ -76,11 +82,19 @@ async def connect() -> JSONResponse:
     `connect({ endpoint })`, so the browser needs no adapter.
     """
     missing = config.missing_keys()
-    if missing:
+    unknown = config.unknown_providers()
+    if missing or unknown:
         # 503 rather than 500: the code is fine, the deployment is not, and the
         # browser can say which key is absent instead of "something went wrong".
+        # An unrecognised provider refuses here for the same reason — the
+        # alternative is minting a room and failing once someone is inside it.
         return JSONResponse(
-            {"detail": "not configured for calls", "missing_env": missing}, status_code=503
+            {
+                "detail": "not configured for calls",
+                "missing_env": missing,
+                "misconfigured": unknown,
+            },
+            status_code=503,
         )
 
     call = await daily.mint_call(app.state.http)

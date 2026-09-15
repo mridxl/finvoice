@@ -30,6 +30,17 @@ def _env(name: str, default: str = "") -> str:
 # the mistake.
 DEFAULT_LLM_MODELS = {"openai": "gpt-5-mini", "google": "gemini-3.8-flash"}
 
+# What each seam may actually be pointed at. `providers.py` branches on exactly
+# these names and raises on anything else — which used to be discovered on the
+# first call, in a traceback, after the caller had already joined the room.
+# `LLM_PROVIDER=gemini` is the mistake this exists for: a real product's name,
+# and not the one the factory branches on.
+PROVIDERS: dict[str, tuple[str, ...]] = {
+    "LLM_PROVIDER": ("openai", "google"),
+    "STT_PROVIDER": ("deepgram", "openai"),
+    "TTS_PROVIDER": ("cartesia", "deepgram", "openai"),
+}
+
 
 def _as_of() -> date:
     """The date the plan is made from. Today in India, unless pinned.
@@ -120,6 +131,24 @@ class Config:
             f"LLM_PROVIDER is {self.llm_provider!r}. {remedy}."
         )
 
+    def unknown_providers(self) -> list[str]:
+        """Seams pointed at something no factory can build, as plain sentences.
+
+        Reported rather than raised, for the same reason `missing_keys` is: the
+        server has to start and `/api/health` has to answer, or the only way to
+        learn the name is wrong is to place a call and read a traceback.
+        """
+        chosen = {
+            "LLM_PROVIDER": self.llm_provider,
+            "STT_PROVIDER": self.stt_provider,
+            "TTS_PROVIDER": self.tts_provider,
+        }
+        return [
+            f"{name}={value!r} is not one of: {', '.join(PROVIDERS[name])}"
+            for name, value in chosen.items()
+            if value not in PROVIDERS[name]
+        ]
+
     def missing_keys(self) -> list[str]:
         """Required env vars that are absent, given the selected providers."""
         needed = {"DAILY_API_KEY": self.daily_api_key}
@@ -129,7 +158,9 @@ class Config:
             needed["OPENAI_API_KEY"] = self.openai_api_key
         if self.llm_provider == "google":
             needed["GOOGLE_API_KEY"] = self.google_api_key
-        if self.stt_provider == "deepgram":
+        # Deepgram serves both seams, and either one alone needs the key — asking
+        # only about STT reported a healthy config for a call that had no voice.
+        if "deepgram" in (self.stt_provider, self.tts_provider):
             needed["DEEPGRAM_API_KEY"] = self.deepgram_api_key
         if self.tts_provider == "cartesia":
             needed["CARTESIA_API_KEY"] = self.cartesia_api_key
