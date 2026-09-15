@@ -82,6 +82,16 @@ class PlanOutcome:
     def solved(self) -> bool:
         return self.status != "infeasible"
 
+    @property
+    def starts_on(self) -> date:
+        """The first of the thirty days. Every spoken date is read against this —
+        a day of the month means nothing until you know which month opened."""
+        return self.ledger[0].on
+
+    @property
+    def ends_on(self) -> date:
+        return self.ledger[-1].on
+
 
 def plan(state: FinancialState, as_of: date) -> PlanOutcome:
     """Walk 30 days from `as_of`, then drop commitments up the ladder until it clears."""

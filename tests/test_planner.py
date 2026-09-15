@@ -13,7 +13,7 @@ from server.domain.events import (
     FactRecorded,
     FactRetracted,
 )
-from server.domain.money import from_rupees
+from server.domain.money import from_rupees, speak_rupees
 from server.domain.planner import CUSHION, _drop_sequence, cost_of_delay, plan
 from server.domain.state import fold
 from tests.golden import AS_OF, GOLDEN, TIMING_TRAP, fact
@@ -28,6 +28,50 @@ def test_window_is_thirty_days_from_as_of():
     assert len(outcome.ledger) == 30
     assert outcome.ledger[0].on == date(2026, 9, 1)
     assert outcome.ledger[-1].on == date(2026, 9, 30)
+    assert (outcome.starts_on, outcome.ends_on) == (date(2026, 9, 1), date(2026, 9, 30))
+
+
+def demo_log():
+    """The facts from the 2026-09-15 demo, in the order they were given."""
+    return [
+        fact("cash", "cash_on_hand", "Cash in bank", 3_000),
+        fact("salary", "income", "Salary", 75_000, day=5),
+        fact("delivery", "income", "Food delivery", 4_000, spread=True),
+        fact("emi", "loan_emi", "Education loan EMI", 8_000, day=10),
+        fact("onetime", "optional", "One-time payment", 7_000, day=13),
+        fact("rent", "essential", "Rent", 15_000, day=20),
+        fact("living", "essential", "Monthly expenses", 12_500, spread=True),
+        fact("phone", "essential", "Phone bill", 300, day=20),
+        fact("home", "essential", "Money sent home", 20_000, day=20),
+    ]
+
+
+def test_the_same_facts_are_a_different_month_from_a_different_day():
+    # The demo, and the reason the plan was unexplainable rather than wrong.
+    # Started on the first, the salary on the fifth arrives before the rent, the
+    # phone bill and the money sent home all land together on the twentieth, and
+    # the month clears. Started on the fifteenth, the twentieth is five days away
+    # and the salary is not until October, so the same facts break.
+    #
+    # Both answers are correct. Thirty days from today is not this month, and a
+    # day of the month cannot say which of the two it belongs to.
+    # Spread facts allocate to the paise, so the lowest point lands off a round
+    # rupee. It is asserted as spoken, because that is the form he was given it in.
+    from_the_first = plan(fold(demo_log()), date(2026, 9, 1))
+    assert from_the_first.status == "feasible"
+    assert from_the_first.first_shortfall_on is None
+    assert speak_rupees(from_the_first.lowest) == "one thousand eight hundred sixty seven rupees"
+
+    from_the_fifteenth = plan(fold(demo_log()), date(2026, 9, 15))
+    assert from_the_fifteenth.status == "infeasible"
+    assert from_the_fifteenth.first_shortfall_on == date(2026, 9, 20)
+    assert speak_rupees(from_the_fifteenth.lowest) == (
+        "minus thirty seven thousand nine hundred sixty seven rupees"
+    )
+
+    # What does not move is the month's arithmetic: the same money goes in and
+    # out either way, and only when decides whether it is ever all there at once.
+    assert from_the_first.closing == from_the_fifteenth.closing == from_rupees(19_200)
 
 
 def test_paying_everything_on_time_runs_out_on_the_eighteenth():
