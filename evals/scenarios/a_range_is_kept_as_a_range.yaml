@@ -1,0 +1,58 @@
+name: a_range_is_kept_as_a_range
+judge: !include ../text_judge.yaml
+
+# From a live call. The user revised a figure into a range, and three things went
+# wrong at once: the range recorded no amount at all, so the fact left the plan
+# entirely; the read-back said the amount was not known; and the agent went on to
+# ask for the statement figure, which the prompt forbids. The revision also
+# became a second EMI beside the first, because correct_fact had no way to say
+# "it is a range now".
+#
+# A range is an answer, not an absence. It plans on its middle and is read back
+# as its ends.
+
+turns:
+  - expect:
+      - event: response
+        eval: >-
+          introduces itself and asks whether the user is ready to start. It
+          states no amount of money of its own.
+
+  - user: "I earn forty thousand a month, it comes in on the first."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 40000, day_of_month: 1 }
+
+  - user: "My personal loan EMI is nine thousand five hundred, on the twelfth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 9500, day_of_month: 12 }
+
+  - user: "No, sorry, I gave you the wrong amount. It's somewhere between eight and a half thousand and nine and a half thousand. I'm honestly not sure."
+    expect:
+      # A revision, not a second loan — and one that widens rather than settles,
+      # which is what the range arguments on correct_fact are for.
+      - event: function_call
+        calls:
+          - name: correct_fact
+            args: { amount_low_rupees: 8500, amount_high_rupees: 9500 }
+      - event: response
+        eval: >-
+          reads the range back as between eight thousand five hundred and nine
+          thousand five hundred rupees, in words. It does not say the amount is
+          unknown or not yet recorded, it does not state nine thousand as the
+          figure, and it does not ask the user to check a statement or settle on
+          a single number. It does not imply there are now two loans.
+
+  - user: "Does that matter much?"
+    expect:
+      - event: response
+        eval: >-
+          answers from what the tools returned. It either says the spread does
+          not change the outcome, or names what it would change, and it states no
+          amount that did not come back from a tool. It does not press the user
+          for an exact figure.

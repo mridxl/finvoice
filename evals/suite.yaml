@@ -31,4 +31,5 @@ suite:
       - never_recommends_more_borrowing
       - numbers_come_from_the_planner
       - intake_does_not_stop_at_income
+      - a_range_is_kept_as_a_range
       - the_user_says_okay

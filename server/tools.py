@@ -33,7 +33,7 @@ from server.domain.events import (
     NothingFurther,
 )
 from server.domain.gaps import Gap
-from server.domain.money import Money, from_rupees, speak_rupees
+from server.domain.money import Money, from_rupees, midpoint, speak_range, speak_rupees
 from server.domain.planner import Action, PlanOutcome
 from server.domain.speech import speak_date, speak_day, speak_month_day
 from server.session import Session
@@ -98,10 +98,15 @@ async def record_money_fact(
         return await _fail(params, "give both amount_low_rupees and amount_high_rupees, or amount_rupees")
     if (day_earliest is None) != (day_latest is None):
         return await _fail(params, "give both day_earliest and day_latest, or day_of_month")
-    if amount_rupees is None and amount_low_rupees is not None and amount_low_rupees == amount_high_rupees:
-        amount_rupees, amount_low_rupees, amount_high_rupees = amount_low_rupees, None, None
     if day_of_month is None and day_earliest is not None and day_earliest == day_latest:
         day_of_month, day_earliest, day_latest = day_earliest, None, None
+
+    amount, bounds = _amount_and_bounds(amount_rupees, amount_low_rupees, amount_high_rupees)
+    # Same kind, same words: almost always the thing already on the cards, said a
+    # second time. Not refused — two cards can share a label, and a genuine second
+    # account of one thing is what flag_conflict is for — but the model is told,
+    # because recording it twice is how one EMI ends up counted twice.
+    twin = _twin(session, kind, label)
 
     fact_id = session.new_fact_id(label)
     session.record(
@@ -110,9 +115,9 @@ async def record_money_fact(
                 fact_id=fact_id,
                 kind=kind,  # type: ignore[arg-type]
                 label=label,
-                amount=_paise(amount_rupees),
+                amount=amount,
                 day=day_of_month,
-                amount_bounds=_bounds(_paise(amount_low_rupees), _paise(amount_high_rupees)),
+                amount_bounds=bounds,
                 day_bounds=_bounds(day_earliest, day_latest),
                 spread=spread,
                 secured=secured,
@@ -121,10 +126,15 @@ async def record_money_fact(
         )
     )
     fact = session.state().get(fact_id)
-    await _settle(
-        params,
-        {"fact_id": fact_id, "certainty": fact.certainty, "read_back": _read_back(fact)},
-    )
+    payload = {"fact_id": fact_id, "certainty": fact.certainty, "read_back": _read_back(fact)}
+    if twin is not None:
+        payload["already_recorded"] = twin
+        payload["note"] = (
+            f"{twin} is already recorded with this label. If this is the same thing "
+            "said again, retract this one and use correct_fact on that id — or "
+            "flag_conflict, if both figures were given as true."
+        )
+    await _settle(params, payload)
 
 
 async def correct_fact(
@@ -132,26 +142,43 @@ async def correct_fact(
     fact_id: str,
     amount_rupees: float | None = None,
     day_of_month: int | None = None,
+    amount_low_rupees: float | None = None,
+    amount_high_rupees: float | None = None,
 ) -> None:
     """Revise a fact the user has changed their mind about, or that you got wrong.
 
     Use this rather than recording the same thing a second time. The old value is
     kept as history and every card moves to the new one.
 
+    A revision goes either way. If they settle on one figure, give amount_rupees,
+    and any range we were carrying is dropped. If a figure they gave turns out to
+    be a range — "actually it is somewhere between eight and a half and nine and a
+    half thousand" — give amount_low_rupees and amount_high_rupees instead, both
+    together. Either way this is the tool: do not record it again as a new fact.
+
     Args:
         fact_id: The id you were given when the fact was recorded.
-        amount_rupees: The corrected amount, if the amount changed.
+        amount_rupees: The corrected amount, if they gave one figure.
         day_of_month: The corrected day of the month, if the day changed.
+        amount_low_rupees: Lowest it could be, if it turned out to be a range.
+            Always with amount_high_rupees.
+        amount_high_rupees: Highest it could be, if it turned out to be a range.
+            Always with amount_low_rupees.
     """
     session = _session(params)
     if session.state().get(fact_id) is None:
         return await _fail(params, f"no fact called {fact_id}")
-    if amount_rupees is None and day_of_month is None:
+    if (amount_low_rupees is None) != (amount_high_rupees is None):
+        return await _fail(params, "give both amount_low_rupees and amount_high_rupees, or amount_rupees")
+    if amount_rupees is None and day_of_month is None and amount_low_rupees is None:
         return await _fail(params, "say what changed: the amount, the day, or both")
     if (bad := _bad_day(day_of_month)) is not None:
         return await _fail(params, bad)
 
-    session.record(FactCorrected(fact_id, _paise(amount_rupees), day_of_month, turn=session.turn))
+    amount, bounds = _amount_and_bounds(amount_rupees, amount_low_rupees, amount_high_rupees)
+    session.record(
+        FactCorrected(fact_id, amount, day_of_month, amount_bounds=bounds, turn=session.turn)
+    )
     await _settle(
         params, {"fact_id": fact_id, "read_back": _read_back(session.state().get(fact_id))}
     )
@@ -382,13 +409,56 @@ def _action_payload(action: Action, since: date) -> dict:
     return payload
 
 
+def _amount_and_bounds(
+    amount_rupees: float | None, low_rupees: float | None, high_rupees: float | None
+) -> tuple[Money | None, Bounds | None]:
+    """The figure the planner works from, and the range it came out of.
+
+    A range on its own used to leave the amount empty, and an empty amount is how
+    `plan` says "unknown": the fact was dropped from the ledger entirely, the
+    read-back said the amount was not known, and `gaps` asked for the figure the
+    prompt had just promised not to ask for. A range is not an unknown. It plans
+    on its midpoint and keeps its ends, so `gaps` can swing them and raise the
+    question only if the spread actually changes the month.
+    """
+    amount = _paise(amount_rupees)
+    bounds = _bounds(_paise(low_rupees), _paise(high_rupees))
+    if amount is not None:
+        return amount, bounds
+    if bounds is not None:
+        return midpoint(bounds.low, bounds.high), bounds
+    # Ends that meet are a figure, not a range: "about two thousand two hundred"
+    # arrives as 2200 to 2200, and `_bounds` has already collapsed it to nothing.
+    return _paise(low_rupees), None
+
+
+def _twin(session: Session, kind: str, label: str) -> str | None:
+    """An existing fact of the same kind wearing the same words."""
+    said = label.strip().casefold()
+    return next(
+        (
+            f.fact_id
+            for f in session.state().facts
+            if f.kind == kind and f.label.strip().casefold() == said
+        ),
+        None,
+    )
+
+
 def _read_back(fact: Fact | None) -> str:
     """What to say back, so a misheard figure is caught now and not in the plan."""
     if fact is None:
         return ""
     if fact.amount is None:
         return f"{fact.label}, amount not known yet"
-    said = f"{fact.label}, {speak_rupees(fact.amount)}"
+    # The range, never the midpoint: the midpoint is ours, and reading it back
+    # would invite them to confirm a number they never said.
+    spoken = (
+        speak_range(fact.amount_bounds.low, fact.amount_bounds.high)
+        if fact.amount_bounds is not None
+        else speak_rupees(fact.amount)
+    )
+    said = f"{fact.label}, {spoken}"
     if fact.spread:
         return f"{said} across the month"
     if fact.day is not None:

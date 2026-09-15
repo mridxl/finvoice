@@ -82,12 +82,20 @@ class FactRecorded:
 
 @dataclass(frozen=True)
 class FactCorrected:
-    """A revision of an existing fact. Supersedes an estimate: correcting an
-    amount clears its bounds, because the user has now just told us the number."""
+    """A revision of an existing fact.
+
+    Correcting to a firm amount clears its bounds, because the user has now just
+    told us the number. A revision can also go the other way — a stated figure
+    becoming a range once they think about it — which is what `amount_bounds`
+    carries, alongside the midpoint the planner works from. Without it the only
+    way to widen a figure was to record the thing a second time, and the plan
+    then carried both.
+    """
 
     fact_id: str
     amount: Money | None = None
     day: int | None = None
+    amount_bounds: Bounds | None = None
     verbatim: str = ""
     turn: int = 0
 

@@ -131,6 +131,14 @@ def _fact(state: FinancialState, fact: Fact) -> dict:
         "kind": fact.kind,
         "amount": _money(fact.amount) if fact.amount is not None else None,
         "day": fact.day,
+        # The ends the user actually said. `amount` is the middle of them, which
+        # is what the plan works from and is a number nobody uttered — so the
+        # card shows both rather than passing our figure off as theirs.
+        "amount_range": (
+            {"low": _money(fact.amount_bounds.low), "high": _money(fact.amount_bounds.high)}
+            if fact.amount_bounds is not None
+            else None
+        ),
         "spread": fact.spread,
         "certainty": fact.certainty,
         "contested": any(fact.fact_id in c.fact_ids for c in state.open_conflicts),

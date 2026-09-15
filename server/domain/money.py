@@ -49,6 +49,22 @@ def allocate(total: Money, parts: int) -> list[Money]:
     return [sign * (base + (1 if i < remainder else 0)) for i in range(parts)]
 
 
+def midpoint(low: Money, high: Money) -> Money:
+    """The centre of an interval, for planning on a range nobody has pinned down.
+
+    An interval has a centre and a conflict does not, which is the whole
+    difference between this and `FinancialState._collapse`: two figures for one
+    thing are a contradiction to be settled, a range is an honest answer to plan
+    from. The bounds are kept alongside, so `gaps.py` re-plans at both ends and
+    asks only if the spread actually changes the month.
+
+    Half a paisa rounds away from zero, the same direction as `from_rupees`.
+    """
+    total = low + high
+    sign = -1 if total < 0 else 1
+    return sign * ((abs(total) + 1) // 2)
+
+
 def format_rupees(m: Money) -> str:
     """Indian digit grouping, no currency symbol. For cards, not for speech."""
     rupees, paise = divmod(abs(m), PAISE)
@@ -67,7 +83,26 @@ def speak_rupees(m: Money) -> str:
     """
     rupees = (abs(m) + PAISE // 2) // PAISE  # nearest rupee; paise are never spoken
     unit = "rupee" if rupees == 1 else "rupees"
-    return f"{'minus ' if m < 0 else ''}{_in_words(rupees)} {unit}"
+    return f"{_bare(m)} {unit}"
+
+
+def speak_range(low: Money, high: Money) -> str:
+    """A range as one phrase, with the unit said once at the end.
+
+    Read back to the user in place of the figure the planner is working from,
+    because that figure is the middle of this and the user never said it. The
+    read-back is there to catch a mishearing, and it cannot do that with a
+    number nobody uttered.
+    """
+    if low > high:
+        low, high = high, low
+    return f"between {_bare(low)} and {speak_rupees(high)}"
+
+
+def _bare(m: Money) -> str:
+    """Whole rupees in words, without the unit. `speak_rupees` adds it."""
+    rupees = (abs(m) + PAISE // 2) // PAISE
+    return f"{'minus ' if m < 0 else ''}{_in_words(rupees)}"
 
 
 def _group_indian(n: int) -> str:

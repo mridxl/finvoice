@@ -144,8 +144,16 @@ def fold(events: Sequence[Event]) -> FinancialState:
                     amount=previous.amount if event.amount is None else event.amount,
                     day=previous.day if event.day is None else event.day,
                     # A correction is the user stating the number, so it supersedes
-                    # whatever range we were carrying for the field they corrected.
-                    amount_bounds=None if event.amount is not None else previous.amount_bounds,
+                    # whatever range we were carrying for the field they corrected
+                    # — unless what they stated *is* a range, which arrives as
+                    # bounds plus the midpoint and replaces both.
+                    amount_bounds=(
+                        event.amount_bounds
+                        if event.amount_bounds is not None
+                        else None
+                        if event.amount is not None
+                        else previous.amount_bounds
+                    ),
                     day_bounds=None if event.day is not None else previous.day_bounds,
                     verbatim=event.verbatim or previous.verbatim,
                     turn=event.turn or previous.turn,

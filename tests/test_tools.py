@@ -12,7 +12,9 @@ from datetime import date
 
 from pipecat.adapters.schemas.direct_function import DirectFunctionWrapper
 
+from server.domain.events import Bounds
 from server.domain.money import from_rupees
+from server.domain.planner import plan
 from server.session import Session
 from server.tools import (
     TOOLS,
@@ -443,3 +445,128 @@ def test_the_dated_scenarios_figures_are_still_what_the_planner_says():
     assert payload["gap_if_everything_is_paid_on_time"] == "sixteen thousand rupees"
     assert [a["label"] for a in payload["spending_to_cut"]] == ["Subscriptions"]
     assert [a["label"] for a in payload["cannot_be_paid"]] == ["Personal loan EMI"]
+
+
+def test_a_range_with_no_figure_is_planned_on_rather_than_dropped():
+    # Reported from a live call: "my EMI is somewhere between eight and a half
+    # and nine and a half thousand" recorded amount=None, which is how the domain
+    # spells "unknown". The fact vanished from the ledger, the read-back said the
+    # amount was not known, and gaps asked for the figure the prompt had just
+    # promised not to ask for.
+    session = Session(as_of=AS_OF)
+    result = call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_low_rupees=8_500, amount_high_rupees=9_500, day_of_month=12,
+    )
+    fact = session.state().get("personal_loan_emi")
+    assert fact.amount == from_rupees(9_000)
+    assert fact.amount_bounds == Bounds(from_rupees(8_500), from_rupees(9_500))
+    assert fact.certainty == "estimated"
+    assert result["certainty"] == "estimated"
+
+
+def test_a_range_is_read_back_as_the_range_and_never_as_its_middle():
+    session = Session(as_of=AS_OF)
+    result = call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_low_rupees=8_500, amount_high_rupees=9_500, day_of_month=12,
+    )
+    assert result["read_back"] == (
+        "Personal loan EMI, between eight thousand five hundred and "
+        "nine thousand five hundred rupees on the twelfth"
+    )
+    assert "nine thousand rupees" not in result["read_back"]
+
+
+def test_a_range_with_no_figure_reaches_the_ledger():
+    # The money to pay it has to be there, or the planner correctly leaves it
+    # unpaid and the ledger is empty for a reason that has nothing to do with this.
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="cash_on_hand", label="Cash", amount_rupees=20_000)
+    call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_low_rupees=8_500, amount_high_rupees=9_500, day_of_month=12,
+    )
+    outcome = plan(session.state(), AS_OF)
+    scheduled = [e for row in outcome.ledger for e in row.entries]
+    assert [(e.fact_id, e.amount) for e in scheduled] == [
+        ("personal_loan_emi", -from_rupees(9_000))
+    ]
+    assert outcome.unpaid == ()
+
+
+def test_a_figure_can_be_revised_into_a_range_without_a_second_fact():
+    session = Session(as_of=AS_OF)
+    call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_rupees=9_500, day_of_month=12,
+    )
+    result = call(
+        correct_fact, session, fact_id="personal_loan_emi",
+        amount_low_rupees=8_500, amount_high_rupees=9_500,
+    )
+    assert "error" not in result
+    assert [f.fact_id for f in session.state().of_kind("loan_emi")] == ["personal_loan_emi"]
+    fact = session.state().get("personal_loan_emi")
+    assert fact.amount == from_rupees(9_000)
+    assert fact.amount_bounds == Bounds(from_rupees(8_500), from_rupees(9_500))
+    # The day was not part of the revision and survives it.
+    assert fact.day == 12
+    # History is what lets the card show what the figure used to be.
+    assert session.state().history["personal_loan_emi"][-1].amount == from_rupees(9_500)
+
+
+def test_settling_on_a_figure_still_drops_the_range():
+    session = Session(as_of=AS_OF)
+    call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_low_rupees=8_500, amount_high_rupees=9_500, day_of_month=12,
+    )
+    call(correct_fact, session, fact_id="personal_loan_emi", amount_rupees=8_800)
+    fact = session.state().get("personal_loan_emi")
+    assert fact.amount == from_rupees(8_800)
+    assert fact.amount_bounds is None
+    assert fact.certainty == "stated"
+
+
+def test_a_correction_with_one_end_of_a_range_is_refused():
+    session = Session(as_of=AS_OF)
+    call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_rupees=9_500, day_of_month=12,
+    )
+    result = call(
+        correct_fact, session, fact_id="personal_loan_emi", amount_low_rupees=8_500
+    )
+    assert "error" in result
+    assert session.state().get("personal_loan_emi").amount == from_rupees(9_500)
+
+
+def test_recording_the_same_label_twice_is_allowed_but_reported():
+    # Not refused: two cards can share a label, and two accounts of one thing is
+    # what flag_conflict is for. But an unremarked duplicate is how one EMI ends
+    # up counted twice, so the model is told which id it already has.
+    session = Session(as_of=AS_OF)
+    call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_rupees=9_500, day_of_month=12,
+    )
+    result = call(
+        record_money_fact, session, kind="loan_emi", label="personal loan emi  ",
+        amount_rupees=8_500, day_of_month=12,
+    )
+    assert result["already_recorded"] == "personal_loan_emi"
+    assert result["fact_id"] == "personal_loan_emi_2"
+
+
+def test_a_different_thing_with_a_different_label_is_not_reported_as_a_duplicate():
+    session = Session(as_of=AS_OF)
+    call(
+        record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+        amount_rupees=9_500, day_of_month=12,
+    )
+    result = call(
+        record_money_fact, session, kind="loan_emi", label="Two-wheeler EMI",
+        amount_rupees=4_200, day_of_month=8,
+    )
+    assert "already_recorded" not in result

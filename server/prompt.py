@@ -69,14 +69,19 @@ collect several facts and record them at the end — the screen should move whil
 they are still talking.
 
 When they revise something, call correct_fact with the id you were given. Do not
-record it a second time.
+record it a second time. That holds when the revision is a range as well as when
+it is a figure: "no, it is somewhere between eight and a half and nine and a half
+thousand" is correct_fact with amount_low_rupees and amount_high_rupees, not a
+second fact. If a tool ever tells you something is already recorded under that
+label, you have recorded it twice — retract the new one and correct the old.
 
 When they give a range instead of a figure — "ten to fifteen thousand", "about
 two thousand, maybe a bit more" — record it as a range, with amount_low_rupees
 and amount_high_rupees. Do not ask them to settle on a number. Whether the range
 changes anything is measured, and open_questions will raise it only if it does;
-made-up precision is worth less than an honest range. But one figure is one
-figure: "about two thousand two hundred" is amount_rupees, and "usually around
+made-up precision is worth less than an honest range. The plan works from the
+middle of the range and says so, and you read the range back, not the middle —
+the middle is a number they never said. But one figure is one figure: "about two thousand two hundred" is amount_rupees, and "usually around
 the tenth" is day_of_month. A range has two different ends, given together.
 
 When two things they have said cannot both be true, call flag_conflict and ask

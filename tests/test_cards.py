@@ -3,7 +3,7 @@
 import json
 
 from server.domain.cards import TITLES, build_cards
-from server.domain.events import ArrangementConfirmed, FactCorrected
+from server.domain.events import ArrangementConfirmed, Bounds, FactCorrected
 from server.domain.gaps import rank_gaps
 from server.domain.money import from_rupees
 from server.domain.planner import plan
@@ -129,3 +129,21 @@ def test_there_is_enough_information_only_when_no_question_is_left():
     settled = cards_for([*GOLDEN, *SWEPT, FactCorrected("spouse", day=12, turn=9)])
     assert settled["missing_info"]["body"]["enough_information"]
     assert settled["missing_info"]["body"]["items"] == []
+
+
+def test_a_card_shows_the_range_beside_the_figure_the_plan_uses():
+    # The amount is the middle of the range, which is ours and not theirs. A card
+    # that showed only the middle would be asserting a number the user never said.
+    log = [*GOLDEN, FactCorrected("loan", amount=from_rupees(9_000),
+                                  amount_bounds=Bounds(from_rupees(8_500), from_rupees(9_500)),
+                                  turn=9)]
+    item = next(i for i in cards_for(log)["obligations"]["body"]["items"] if i["fact_id"] == "loan")
+    assert item["amount"]["text"] == "9,000"
+    assert item["amount_range"]["low"]["text"] == "8,500"
+    assert item["amount_range"]["high"]["text"] == "9,500"
+    assert item["certainty"] == "estimated"
+
+
+def test_a_plain_figure_carries_no_range():
+    item = next(i for i in cards_for(GOLDEN)["essentials"]["body"]["items"] if i["fact_id"] == "rent")
+    assert item["amount_range"] is None

@@ -16,6 +16,9 @@ export type FactItem = {
   label: string;
   kind: string;
   amount: Amount | null;
+  /** The ends the user gave, when they gave a range. `amount` is the middle of
+   *  them — the figure the planner works from, which nobody said out loud. */
+  amount_range: { low: Amount; high: Amount } | null;
   day: number | null;
   spread: boolean;
   certainty: Certainty;

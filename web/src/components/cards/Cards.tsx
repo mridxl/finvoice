@@ -57,6 +57,13 @@ export function FactList({ items }: { items: FactItem[] }) {
               </span>
             )}
             {fact.amount ? <Rupees of={fact.amount} className="font-semibold" /> : "—"}
+            {/* What they said, under what the plan uses. Without it the card
+                asserts a figure they never gave and the badge is the only clue. */}
+            {fact.amount_range && (
+              <span className="text-muted-foreground block text-xs">
+                {rupees(fact.amount_range.low)}–{rupees(fact.amount_range.high)}
+              </span>
+            )}
           </span>
         </li>
       ))}

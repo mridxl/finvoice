@@ -1,6 +1,13 @@
 """Money conversion, splitting and rendering. Everything here is exact by construction."""
 
-from server.domain.money import allocate, format_rupees, from_rupees, speak_rupees
+from server.domain.money import (
+    allocate,
+    format_rupees,
+    from_rupees,
+    midpoint,
+    speak_range,
+    speak_rupees,
+)
 
 
 def test_rupees_convert_to_paise():
@@ -44,3 +51,20 @@ def test_amounts_are_spoken_as_words():
     assert speak_rupees(from_rupees(150_000)) == "one lakh fifty thousand rupees"
     assert speak_rupees(from_rupees(1)) == "one rupee"
     assert "₹" not in speak_rupees(from_rupees(9_500))
+
+
+def test_the_middle_of_a_range_is_what_the_plan_works_from():
+    assert midpoint(from_rupees(8_500), from_rupees(9_500)) == from_rupees(9_000)
+    # Ends given the wrong way round are still a range.
+    assert midpoint(from_rupees(9_500), from_rupees(8_500)) == from_rupees(9_000)
+    assert midpoint(from_rupees(100), from_rupees(100)) == from_rupees(100)
+
+
+def test_a_half_paisa_rounds_the_way_every_other_rounding_here_does():
+    assert midpoint(1, 2) == 2  # away from zero, as from_rupees does
+    assert midpoint(-1, -2) == -2
+
+
+def test_a_range_is_spoken_as_one_phrase_with_the_unit_said_once():
+    said = speak_range(from_rupees(8_500), from_rupees(9_500))
+    assert said == "between eight thousand five hundred and nine thousand five hundred rupees"
