@@ -15,6 +15,7 @@ import aiohttp
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pipecat.utils.prewarm import warm_deferred_imports
 
 from server import daily, providers
 from server.bot import run_bot
@@ -36,6 +37,18 @@ _calls: dict[str, asyncio.Task] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("providers: %s", providers.describe())
+    # Pipecat defers a pile of heavy imports and warms them inside pipeline
+    # setup, on a worker thread, racing a twenty-second budget it shares with
+    # joining Daily and opening two Deepgram sockets. The first call in a fresh
+    # process lost that race every time — "timeout setting the pipeline up",
+    # nought turns, no other trace — while every later call set up in about a
+    # millisecond, because by then the modules were in `sys.modules`.
+    #
+    # Diagnosed by dumping the await chain of every task mid-hang: the setup
+    # task parked on `warm_lazy_imports`, itself parked in `to_thread`. Doing it
+    # here costs a couple of seconds of startup, where nothing is waiting.
+    await asyncio.to_thread(warm_deferred_imports)
+    log.info("deferred imports warmed")
     # Said at startup, not on the first call. A provider name nothing can build
     # used to reach the caller as a traceback, after they had joined the room.
     for complaint in config.unknown_providers():
