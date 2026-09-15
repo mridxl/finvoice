@@ -79,8 +79,23 @@ async def run_bot(transport, session: Session) -> None:
 
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):
+        """Open the conversation, without doing it on the transport's thread.
+
+        The caller is usually already in the room by the time the bot joins —
+        the browser has the room URL the moment `/api/connect` answers, while
+        the bot still has Silero and Smart Turn to load. So this fires from
+        inside the transport's own join, which runs while the pipeline is still
+        being set up, and awaiting the queue there wedges setup: the worker
+        gives up twenty seconds later having never said a word.
+
+        Bisected rather than reasoned: a bot joining an empty room sets up
+        fine, and the same bot joining a room with the caller already in it
+        does not. Handing the frame to the worker's own task group lets the
+        transport's join return, and the greeting goes out once the pipeline
+        is actually running.
+        """
         log.info("client connected; opening the conversation")
-        await worker.queue_frames([LLMRunFrame()])
+        worker.create_task(worker.queue_frames([LLMRunFrame()]))
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client):
