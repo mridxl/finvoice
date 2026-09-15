@@ -28,6 +28,8 @@ bakes in the Smart Turn model so no call waits on a download.
 
 Then open <http://localhost:8080>, press **Connect**, and allow the microphone.
 
+![The FinVoice call screen before connecting: the microphone rail on the left, the workspace on the right.](docs/app.png)
+
 If the call won't start, <http://localhost:8080/api/health> says why: `status` is `ok`, or
 `needs-config` with `missing_env` and `misconfigured` naming exactly what to fix. The server
 starts without keys on purpose and refuses calls with a 503, rather than failing after you
@@ -46,11 +48,15 @@ what has been settled and what has not been raised yet, and underneath it every 
 have given, grouped. That list is the read-back made visible: speech recognition confuses
 fifteen and fifty, and a figure you cannot see is one you cannot correct.
 
+![Gathering mode: a coverage strip reading Income partly, Essentials partly, Loans asking now, Cards not yet, above the figures given so far. Rent shows twelve thousand with a struck-through ten thousand beside it.](docs/gathering.png)
+
 **Once every category is closed**, it becomes a plan: the verdict in one line — *the month
 works*, *it works but only just*, or *the money doesn't stretch to cover everything* — then
 what has to give way, the running balance across the thirty days with the zero line drawn,
 and the figures. Two tabs sit under it: **What you told me**, and **How it adds up**, which
 holds the day-by-day ledger every number was built from.
+
+![Plan mode: the verdict that the money doesn't stretch to cover everything, what has to give way, the balance curve crossing the zero line, and the figures.](docs/plan.png)
 
 Correct something mid-sentence and every figure that depends on it moves.
 
@@ -68,6 +74,8 @@ That is why a correction propagates cleanly — the cards are projections of one
 so an inconsistent screen is unrepresentable rather than merely unlikely — and it is why the
 planner is tested with no LLM in the loop. The ledger is on screen for the same reason: the
 claim that no figure was invented is worth nothing if the derivation is hidden.
+
+![The How it adds up tab: where the gap comes from, what the plan assumed, what is still to check ranked by impact, and the day-by-day ledger.](docs/how-it-adds-up.png)
 
 `SPEC.md` states the requirements. `BUILD-PLAN.md` covers the architecture, the provider
 seam, and why each default is what it is.
