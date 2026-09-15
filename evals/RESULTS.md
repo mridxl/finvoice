@@ -5,8 +5,9 @@ is one `pipecat.evals suite` invocation; the per-scenario logs for every run are
 `eval-runs/<name>/logs/` on the machine that ran them, and the causes below are quoted from
 those logs, not inferred.
 
-Bot and judge: `gpt-5.6-luna`, `OPENAI_REASONING_EFFORT=none`, text modality both sides.
-Unit tests were green throughout — none of this is arithmetic. All of it is what the
+Bot and judge by the last run: `gpt-5.6-luna`, `OPENAI_REASONING_EFFORT=none`, text modality
+both sides — the first two runs below are how that configuration was arrived at, and the
+judge was still `gpt-5-mini` for them. Unit tests were green throughout — none of this is arithmetic. All of it is what the
 planner's numbers turned into once a model was narrating them.
 
 ## 2026-09-15

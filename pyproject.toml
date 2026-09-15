@@ -5,7 +5,7 @@ description = "Real-time voice assistant for 30-day financial planning"
 requires-python = ">=3.12"
 dependencies = [
     # Pinned exactly: Pipecat 1.x has had breaking changes across minor versions.
-    # cartesia and openai need no extra — openai is a core dependency, and the
+    # Cartesia and OpenAI need no extra — OpenAI is a core dependency, and the
     # Cartesia service runs over core websockets.
     "pipecat-ai[daily,deepgram]==1.10.0",
     # What pipecat.services.google.llm imports, taken directly rather than via
@@ -13,7 +13,7 @@ dependencies = [
     # Text-to-Speech clients and grpcio, and we use Deepgram and Cartesia for
     # those. `google-genai` alone is not enough — the module also imports
     # google.api_core.exceptions, which does not come with it. Safe to pick
-    # apart only because the pipecat version is pinned exactly.
+    # apart only because the Pipecat version is pinned exactly.
     "google-genai>=1.68.0,<3",
     "google-api-core>=2.20,<3",
     "fastapi>=0.115.6",
@@ -31,7 +31,7 @@ dev = [
     # What `python -m pipecat.evals` needs, taken directly rather than via
     # pipecat-ai[cli]: that extra also pulls a vector store and a set of
     # tree-sitter grammars for the scaffolding commands, which no eval touches.
-    # Safe to pick apart only because the pipecat version is pinned exactly.
+    # Safe to pick apart only because the Pipecat version is pinned exactly.
     "typer>=0.20,<1",
     "rich>=13,<14",
     "jinja2>=3.1,<4",

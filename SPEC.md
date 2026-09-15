@@ -234,9 +234,11 @@ Settled for this build.
 | 7 | Locale | India / INR, with lakh-crore handling |
 | 8 | Ports | Single port, single container, `docker compose up --build` |
 
-## 11. Open decisions
+## 11. Late decisions
 
-| # | Question | Blocked on |
+Open when the build started, weighed on evidence rather than up front, and settled.
+
+| # | Question | Outcome |
 |---|---|---|
-| A | STT / TTS / LLM providers | Cost-at-scale vs latency vs reviewer key friction |
+| A | STT / TTS / LLM providers | **Deepgram STT, Cartesia TTS, OpenAI LLM**, each swappable by env var — latency and cost per default in BUILD-PLAN §7.1 |
 | B | Optional track A or B | **Track B**, 2026-09-15 — see `evals/RESULTS.md` and BUILD-PLAN §6 |

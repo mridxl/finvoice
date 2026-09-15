@@ -13,7 +13,7 @@ The model's only numeric surface is a set of tools that write typed facts into a
 log. It is instructed — and structurally unable — to state a figure that did not come
 back from a tool result.
 
-This is not style. It is the only way to satisfy three graded requirements at once:
+This is not style. It is the only way to satisfy three SPEC requirements at once:
 
 | Requirement (SPEC) | Why this design satisfies it |
 |---|---|
@@ -85,7 +85,7 @@ flowchart TB
 
 ## 3. Module layout
 
-Keep it small. Every file should be explainable in one sentence in the live session.
+Keep it small. Every file should be explainable in one sentence.
 
 ```
 finvoice/
@@ -101,6 +101,7 @@ finvoice/
   server/
     main.py                  # FastAPI: static, /api/connect, session registry
     config.py                # env -> frozen Config; the only clock read
+    daily.py                 # the room and its two tokens, minted before a call
     session.py               # one call = one Session; owns the log + card pushes
     bot.py                   # build_pipeline(transport, session) -> Pipeline
     eval_bot.py              # the same pipeline over the eval transport
@@ -119,19 +120,38 @@ finvoice/
   web/
     src/
       App.tsx                # call controls + layout
-      cards/                 # one component per card type
-      LedgerPanel.tsx        # the day-by-day table — "show the math"
-      useSession.ts          # RTVI client + onServerMessage -> card state
+      cards.ts               # the card payloads, mirrored from cards.py
+      client.ts              # the RTVI client, built once outside React
+      useCards.ts            # onServerMessage -> card state
+      useCallState.ts        # whose turn it is, in one word
+      useMicState.ts         # the mic button, read back from Daily
+      components/cards/
+        Workspace.tsx        # gathering or plan — the two shapes of the call
+        Coverage.tsx         # how much of the month has been asked about
+        Ledger.tsx           # the day-by-day table — "show the math"
+        BalanceCurve.tsx     # the running balance, with the zero line drawn
+        Cards.tsx            # every other card body
+        parts.tsx            # section, amount, date, badge
 
   evals/
     suite.yaml               # spawns a bot per scenario; one command
+    suite-midmonth.yaml      # the same bot with a window across two months
     judge.py                 # the judge LLM, so no key sits in a scenario
-    scenarios/*.yaml         # pipecat eval run
+    text_judge.yaml          # the judge's own config, shared by the scenarios
+    RESULTS.md               # what the suites found, run by run
+    scenarios/*.yaml         # one behaviour each
   tests/
+    golden.py                # the §4.7 persona as an event log
     test_planner.py          # deterministic, no LLM
     test_events.py           # corrections, conflicts, folds
     test_gaps.py             # ranking behaviour
     test_tools.py            # the model's API, exercised without a model
+    test_cards.py            # the projections the frontend renders
+    test_money.py            # paise, rounding, Indian grouping, speech
+    test_speech.py           # dates said out loud, across a month boundary
+    test_prompt.py           # the rules the prompt must carry
+    test_session.py          # the log, the digest, the card pushes
+    test_smoke.py            # config, health, and failing loudly on a bad provider
 ```
 
 ---
@@ -179,7 +199,7 @@ real.
 
 **Date-awareness is the whole point.** Income on the 25th does not rescue a bill due on
 the 10th. A monthly-total model gets this wrong and looks fine doing it; a day-by-day
-walk catches it. This is where most naive submissions fail.
+walk catches it. This is where a monthly-total model quietly fails.
 
 ### 4.4 Priority ladder
 
@@ -260,7 +280,7 @@ state change via RTVI server message.
 | `bottom_line` | Shortfall or surplus, with the date it first bites |
 | `missing_info` | Open gaps, ranked — visible proof of what is not known |
 | `actions` | Ordered proposed actions, each with date, amount, reason |
-| `ledger` | **Day-by-day table. The reviewer checks our arithmetic by eye.** |
+| `ledger` | **Day-by-day table. Anyone can check the arithmetic by eye.** |
 
 The `ledger` card is the direct answer to "calculations must be visible and testable".
 Build it early; it is also the best debugging tool we will have.
@@ -377,8 +397,8 @@ path.
 ## 6. Phases
 
 Ordered by dependency and by what survives a crunch. Phases 1–2 are load-bearing: a
-correct planner with a text-mode transcript is a far better submission than half-working
-audio over an empty core.
+correct planner with a text-mode transcript is worth far more than half-working audio
+over an empty core.
 
 ### Phase 0 — Skeleton
 Repo, `uv` project on Python 3.12, pinned `pipecat-ai==1.10.0`, Dockerfile, compose,
@@ -540,7 +560,7 @@ modules are then in `sys.modules`. `lifespan` pays it once, where nothing is wai
 | Risk | Mitigation |
 |---|---|
 | Pipecat 1.x API churn | Pin `1.10.0` exactly. Verify against that version's examples, never memory. |
-| Smart Turn model download at runtime | **Bake the ONNX model into the image at build time.** A reviewer on a slow link must not wait. |
+| Smart Turn model download at runtime | **Bake the ONNX model into the image at build time.** Nobody on a slow link should wait for a first call. |
 | `getUserMedia` needs a secure context | `localhost` qualifies. Never test via LAN IP. |
 | Zombie Daily participants | Handle `on_participant_left` / `on_client_disconnected`; cancel the worker. Short room + token `exp`. |
 | Keys visible in debug logs | Pipecat is chatty. Check log level before recording the video. |
@@ -554,7 +574,7 @@ modules are then in `sys.modules`. `lifespan` pays it once, where nothing is wai
 - [ ] `docker compose up --build` → working app at the README address, no second terminal
 - [ ] Voice conversation start to finish, interruptible
 - [ ] Cards update live and survive a spoken correction
-- [ ] Ledger panel shows arithmetic a reviewer can verify by hand
+- [ ] Ledger panel shows arithmetic that can be verified by hand
 - [ ] Infeasible case explained honestly, no invented escape route
 - [ ] `pytest` green; planner tested independent of any LLM
 - [ ] `.env.example` complete; no secrets committed

@@ -1,8 +1,8 @@
 """FastAPI entrypoint. Serves the built SPA, the API, and hosts the bot task.
 
 One process, one port: the built frontend, the API, and the bot task all live here.
-Starting a call is a POST, not a second process — the submission may not need a
-second terminal, and a bot subprocess per call would be exactly that.
+Starting a call is a POST, not a second process — nothing may ever need a second
+terminal to start, and a bot subprocess per call would be exactly that.
 """
 
 import asyncio
