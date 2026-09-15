@@ -394,6 +394,15 @@ fixture, including the infeasible outcome and the conflict.
 `build_pipeline(transport, session)`, tools, prompt. Run under Pipecat's **eval
 transport** — text in, text out, TTS skipped and no audio synthesised, seconds per run.
 
+That last claim was believed for a week and was false. The harness asks for text mode per
+connection, but its request enters the pipeline below the worker's own RTVI processor,
+which keeps a mirror of the setting it never saw and restores speech on the first user
+turn — so the greeting was silent and every reply after it went to Cartesia and into the
+bin. Found from a credit balance, not a log: nothing at INFO says a word was synthesised.
+One scenario at DEBUG showed five `Generating TTS` lines. `run_bot(speech=False)` now
+queues the same frame from above the mirror; the same scenario shows none, and runs in
+27 seconds instead of 46.
+
 ```bash
 uv run python -m pipecat.evals suite evals/suite.yaml
 ```
@@ -438,8 +447,8 @@ STT_PROVIDER=deepgram
 TTS_PROVIDER=cartesia
 
 LLM_MODEL=                # blank takes the selected provider's default
-GEMINI_THINKING_LEVEL=low       # 3.8-flash and 3.7-flash reject 'minimal'
-OPENAI_REASONING_EFFORT=low     # gpt-5.6-luna: none|low|medium|high|xhigh|max
+GEMINI_THINKING_LEVEL=low       # low|medium|high — 3.8-flash rejects 'minimal'
+OPENAI_REASONING_EFFORT=none    # the only value luna takes with tools on chat/completions
 
 OPENAI_API_KEY=
 GOOGLE_API_KEY=
@@ -461,10 +470,13 @@ model name to Google, and that fails at the first turn rather than at startup.
 **The eval judge follows `LLM_PROVIDER` and not `LLM_MODEL`.** One switch moves the bot and
 its examiner together, so a run can never be graded by a provider there is no credit for;
 but the yardstick stays on its provider's default, because a measure that moves whenever
-the thing being measured is tuned is not a measure. Judging a model with its own family
-shares blind spots — acceptable only because every criterion in `evals/scenarios/` asks
-about something observable (did it state a figure, did it claim to have contacted a
-lender) rather than about subtle quality. The one thing no judge is trusted with is the
+the thing being measured is tuned is not a measure. On OpenAI that default is the bot's
+own model with reasoning off — `gpt-5-mini` left to think reasoned the harness's
+200-token verdict budget away and returned nothing, seven scenarios out of eight — and on
+Gemini it is Flash-Lite, for the same budget reason from the other side. Judging a model
+with its own family shares blind spots — acceptable only because every criterion in
+`evals/scenarios/` asks about something observable (did it state a figure, did it claim
+to have contacted a lender) rather than about subtle quality. The one thing no judge is trusted with is the
 arithmetic: `numbers_come_from_the_planner` pins the figures with `text_contains`, so
 whether the assistant said "seven thousand rupees" is settled by a substring and not by
 an opinion.
@@ -491,9 +503,16 @@ assumed: `gpt-5.6-luna` takes `none, low, medium, high, xhigh, max` and **has no
 turn. `config.unknown_providers()` therefore validates it at startup, alongside the
 provider names, so a bad value is caught before a room is minted rather than mid-call.
 
-`low` is the default because OpenAI's guidance puts tool use and multi-step decisions there
-and reserves `none` for classification and retrieval; this agent picks among nine tools on
-every turn.
+**The model page is not the whole story.** `low` was the first default, on OpenAI's own
+guidance that tool use belongs there. The eval suite then went 0 for 9: on
+`/v1/chat/completions`, the gpt-5.6 family refuses function tools at any effort but
+`none` — including the `medium` it defaults to when nothing is sent — and says so only in
+the 400. Confirmed against OpenAI's forum and three other projects' issue trackers before
+believing it. So `none` is the default and the only value the validator accepts for the
+default model, with the reason in the message; the Responses API has no such rule and is
+the way back to reasoning if it is ever worth 1.2 seconds a turn. The same validator now
+covers `GEMINI_THINKING_LEVEL`, which had been documented as rejecting `minimal` and never
+checked for it.
 
 **`GEMINI_THINKING_LEVEL` is pinned for the same reason `VAD_STOP_SECS` is** — the default
 is wrong for this workload. Gemini 3 models think before answering; those tokens cost

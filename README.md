@@ -54,8 +54,8 @@ reply against Cartesia's sub-100ms time to first byte.
 |---|---|---|
 | `LLM_PROVIDER` | `openai` | `openai` or `google` |
 | `LLM_MODEL` | per provider | Blank picks the provider's default: `gpt-5.6-luna`, or `gemini-3.8-flash` |
-| `GEMINI_THINKING_LEVEL` | `low` | Gemini only. `minimal`/`low`/`medium`/`high`. `gemini-3.8-flash` and `3.7-flash` reject `minimal` with a 400 on the first turn |
-| `OPENAI_REASONING_EFFORT` | `low` | OpenAI only. `none`/`low`/`medium`/`high`/`xhigh`/`max` for `gpt-5.6-luna`. The model's own default is `medium`, which costs seconds of silence per turn; `none` is faster still but OpenAI reserves it for classification and retrieval rather than tool use |
+| `GEMINI_THINKING_LEVEL` | `low` | Gemini only. `low`/`medium`/`high`. `gemini-3.8-flash` rejects `minimal`, which older Gemini accepted |
+| `OPENAI_REASONING_EFFORT` | `none` | OpenAI only. `gpt-5.6-luna` documents `none`/`low`/`medium`/`high`/`xhigh`/`max`, but takes function tools on `/v1/chat/completions` at `none` and nothing else — every turn here carries tools, so `none` is the only value that works, not a latency choice. It is also the fast one |
 | `STT_PROVIDER` | `deepgram` | `deepgram` or `openai` |
 | `TTS_PROVIDER` | `cartesia` | `cartesia`, `deepgram` (`aura-2-helena-en`), or `openai` |
 | `TURN_DETECTION` | `smart` | `smart` = Smart Turn v3 semantic end-of-turn; `vad` = fixed silence threshold |
@@ -64,8 +64,10 @@ reply against Cartesia's sub-100ms time to first byte.
 | `AS_OF` | today, in India | ISO date the 30 days run from, so a run is reproducible. `AS_OF=2026-09-15` plans 15 Sep – 14 Oct |
 | `PORT` | `8080` | |
 
-An unrecognised provider name is reported at startup and on `/api/health`, and refuses the
-call before a room is minted.
+An unrecognised provider name, a reasoning or thinking level the default model refuses, or
+a `TURN_DETECTION` that is neither `smart` nor `vad` is reported at startup and on
+`/api/health`, and refuses the call before a room is minted — rather than on the first
+turn, after you have joined.
 
 ---
 
@@ -113,7 +115,8 @@ uv run python -m pipecat.evals run evals/scenarios/the_month_does_not_work.yaml 
 ```
 
 Both the bot and the judge call a paid API. A suite run is roughly 82k input and 11k output
-tokens — about 17 cents on `gemini-3.8-flash`.
+tokens. The judge follows `LLM_PROVIDER`: on OpenAI it is the bot's own model with reasoning
+off; on Gemini it is `gemini-3.5-flash-lite` — see `evals/judge.py` for why each.
 
 ---
 
