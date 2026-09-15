@@ -3,9 +3,7 @@
 import type { DeviceErrorReason } from "@pipecat-ai/client-js";
 import {
   type OptionalMediaDeviceInfo,
-  PipecatClientMicToggle,
   useMediaState,
-  usePipecatClient,
   usePipecatClientMediaTrack,
 } from "@pipecat-ai/client-react";
 import {
@@ -16,6 +14,8 @@ import {
   Volume2Icon,
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+
+import { useMicState } from "@/useMicState";
 
 import {
   formatDeviceLabel,
@@ -703,7 +703,6 @@ export function UserAudioControl({
   onModeChange,
   ...props
 }: UserAudioControlProps) {
-  const client = usePipecatClient();
   const {
     devices: mics,
     selectedDevice: selectedMic,
@@ -715,6 +714,9 @@ export function UserAudioControl({
     updateDevice: onSpeakerChange,
   } = usePipecatDevices("audiooutput");
   const audioTrack = usePipecatClientMediaTrack("audio", "local");
+  // Local edit to a vendored component: the kit's mic state reads stale after
+  // every toggle. See `useMicState` for the ordering bug behind that.
+  const [isMicEnabled, enableMic] = useMicState();
 
   const [uncontrolledMode, setUncontrolledMode] = useState(defaultMode);
   const mode = controlledMode ?? uncontrolledMode;
@@ -735,26 +737,22 @@ export function UserAudioControl({
     mic.state === "error" ? micErrorText(mic.reason) : undefined;
 
   return (
-    <PipecatClientMicToggle>
-      {({ isMicEnabled, onClick }) => (
-        <UserAudioControlView
-          isMicEnabled={isMicEnabled}
-          onToggleMic={onClick}
-          onMicEnabledChange={(enabled) => client?.enableMic(enabled)}
-          mode={mode}
-          onModeChange={handleModeChange}
-          isLoading={isLoading}
-          unavailableText={unavailableText ?? derivedUnavailable}
-          mics={mics}
-          selectedMic={selectedMic}
-          onMicChange={onMicChange}
-          speakers={speakers}
-          selectedSpeaker={selectedSpeaker}
-          onSpeakerChange={onSpeakerChange}
-          audioTrack={audioTrack}
-          {...props}
-        />
-      )}
-    </PipecatClientMicToggle>
+    <UserAudioControlView
+      isMicEnabled={isMicEnabled}
+      onToggleMic={() => enableMic(!isMicEnabled)}
+      onMicEnabledChange={enableMic}
+      mode={mode}
+      onModeChange={handleModeChange}
+      isLoading={isLoading}
+      unavailableText={unavailableText ?? derivedUnavailable}
+      mics={mics}
+      selectedMic={selectedMic}
+      onMicChange={onMicChange}
+      speakers={speakers}
+      selectedSpeaker={selectedSpeaker}
+      onSpeakerChange={onSpeakerChange}
+      audioTrack={audioTrack}
+      {...props}
+    />
   );
 }
