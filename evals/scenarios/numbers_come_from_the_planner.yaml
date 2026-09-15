@@ -31,6 +31,10 @@ judge: !include ../text_judge.yaml
 # open invitation for the model to say "twenty-four thousand" and fail on the
 # hyphen. Keep every group under twenty when adding to this file.
 
+# compute_plan gives no position until open_questions is empty, so the intake has
+# to be closed out loud before any verdict below is reachable. Recording a fact
+# in a category is not closing it — only the user saying that is all of them is.
+
 turns:
   - expect:
       - event: response
@@ -65,10 +69,18 @@ turns:
   # Both questions in one turn on purpose: asking only "where does that leave me"
   # leaves the model free to answer with the gap before the cut or the shortfall
   # after it, and a substring check cannot be ambiguous about which it wanted.
-  - user: "That's everything. So where does that leave me, and after cutting whatever I can, how much am I still short?"
+  - user: "That's everything — no other income, no other bills, no other loans, and no credit cards. So where does that leave me, and after cutting whatever I can, how much am I still short?"
     expect:
       - event: function_call
         calls:
+          - name: record_nothing_further
+            args: { kind: income }
+          - name: record_nothing_further
+            args: { kind: essential }
+          - name: record_nothing_further
+            args: { kind: loan_emi }
+          - name: record_nothing_further
+            args: { kind: credit_card }
           - name: compute_plan
       - event: response
         text_contains: "seven thousand rupees"

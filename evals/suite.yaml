@@ -32,4 +32,6 @@ suite:
       - numbers_come_from_the_planner
       - intake_does_not_stop_at_income
       - a_range_is_kept_as_a_range
+      - a_conflict_nobody_can_settle
+      - no_position_before_the_picture_is_whole
       - the_user_says_okay

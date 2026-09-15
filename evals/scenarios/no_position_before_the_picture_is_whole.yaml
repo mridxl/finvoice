@@ -1,0 +1,87 @@
+name: no_position_before_the_picture_is_whole
+judge: !include ../text_judge.yaml
+
+# From a live call, and it is the third time this class of mistake has got out.
+#
+# Salary, rent, travel, an EMI and a school fee were in. Credit cards had never
+# been asked about — open_questions said so. The assistant announced anyway:
+# "the plan does not work as stated, the personal loan EMI cannot be paid, you
+# have seven thousand rupees left over, ask your lender." Then it invented the
+# date: it said the money first runs short on the tenth, where compute_plan had
+# said the fifteenth. The tenth was the school fee.
+#
+# It was not really the model's doing. compute_plan handed over the whole verdict
+# including a field that began "say how much is left over", while the prompt said
+# not to. The tool now withholds the position until nothing is outstanding, so
+# this scenario checks the behaviour the rule was always meant to produce — and
+# the two halves of the date mistake besides.
+
+turns:
+  - expect:
+      - event: response
+        eval: >-
+          introduces itself and asks whether the user is ready to start. It
+          states no amount of money of its own.
+
+  - user: "Yes, go ahead."
+    expect:
+      - event: response
+
+  - user: "I've got two thousand two hundred in the account, and my salary is thirty eight thousand on the first."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: cash_on_hand, amount_rupees: 2200 }
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 38000, day_of_month: 1 }
+
+  - user: "Rent is fourteen thousand on the fifth, and the school fee is fifteen thousand on the tenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 14000, day_of_month: 5 }
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 15000, day_of_month: 10 }
+
+  - user: "There's a personal loan EMI of nine thousand five hundred on the fifteenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 9500, day_of_month: 15 }
+      - event: response
+        eval: >-
+          reads the EMI back as nine thousand five hundred rupees on the
+          fifteenth — the amount AND the day — and then asks about something
+          still missing, credit cards or whether that is all the loans. It must
+          NOT say the month does not work, must not state what is left over or
+          what is short, must not name any payment as one that cannot be paid,
+          and must not suggest contacting a lender. Credit cards have not been
+          asked about, so there is no position to give.
+
+  - user: "So am I going to be short this month?"
+    expect:
+      - event: response
+        eval: >-
+          says plainly that it cannot tell them yet and why — there is still
+          something it has not asked about — and asks the next question. It must
+          state no amount of money at all in this turn, and must not say whether
+          the month works.
+
+  - user: "No credit cards, and that's everything."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_nothing_further
+            args: { kind: credit_card }
+      - event: response
+        eval: >-
+          now that nothing is outstanding, says whether the month works. If it
+          names a day the money first runs short and a payment that cannot be
+          paid, it must treat them as two separate facts: it must not say the
+          payment cannot be paid BECAUSE the money runs short that day, and must
+          not name the school fee as what goes unpaid merely because the tenth is
+          when the balance turns. Every figure and date must be one a tool
+          returned.

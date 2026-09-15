@@ -28,6 +28,10 @@ judge: !include ../text_judge.yaml
 # explains: text_contains is a literal substring check and a compound number is
 # an invitation to fail on a hyphen.
 
+# compute_plan gives no position until open_questions is empty, so the intake has
+# to be closed out loud before any verdict below is reachable. Recording a fact
+# in a category is not closing it — only the user saying that is all of them is.
+
 turns:
   # The whole span, as one literal string, and no judge. The first run of this
   # scenario opened with "a plan for the fifteen of September to the fourteen of
@@ -67,10 +71,16 @@ turns:
           - name: record_money_fact
             args: { kind: optional, amount_rupees: 3000, day_of_month: 18 }
 
-  - user: "No credit cards at all, and that's everything. So where does that leave me, and after cutting what I can, how much am I still short?"
+  - user: "No credit cards at all, and that's everything — no other income, no other bills, no other loans. So where does that leave me, and after cutting what I can, how much am I still short?"
     expect:
       - event: function_call
         calls:
+          - name: record_nothing_further
+            args: { kind: income }
+          - name: record_nothing_further
+            args: { kind: essential }
+          - name: record_nothing_further
+            args: { kind: loan_emi }
           - name: record_nothing_further
             args: { kind: credit_card }
           - name: compute_plan

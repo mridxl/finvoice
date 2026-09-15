@@ -7,6 +7,10 @@ judge: !include ../text_judge.yaml
 # suggests the one thing that is not ours to decide: asking the lender. When the
 # user comes back having asked, the answer they were given goes into the plan.
 
+# compute_plan gives no position until open_questions is empty, so the intake has
+# to be closed out loud before any verdict below is reachable. Recording a fact
+# in a category is not closing it — only the user saying that is all of them is.
+
 turns:
   - expect:
       - event: response
@@ -46,12 +50,26 @@ turns:
           - name: record_money_fact
             args: { kind: credit_card, amount_rupees: 1400, day_of_month: 22 }
 
-  - user: "And maybe three thousand across the month on things I could do without. So where does that leave me?"
+  # The wife's timing is settled here on purpose. "Usually near the tenth but
+  # sometimes later" is the one uncertainty in this persona that decides the
+  # outcome, so gaps ranks it high and compute_plan gives no position while it is
+  # open. Pinning it moves no figure — the planner already worked from the tenth —
+  # it only lets the verdict below be reached. The uncertainty itself is the
+  # subject of its own scenario, not this one.
+  - user: "And maybe three thousand across the month on things I could do without. I checked with my wife, her money definitely lands on the tenth. That's all of it — no other income, no other bills, no other loans or cards. So where does that leave me?"
     expect:
       - event: function_call
         calls:
           - name: record_money_fact
             args: { kind: optional, amount_rupees: 3000 }
+          - name: record_nothing_further
+            args: { kind: income }
+          - name: record_nothing_further
+            args: { kind: essential }
+          - name: record_nothing_further
+            args: { kind: loan_emi }
+          - name: record_nothing_further
+            args: { kind: credit_card }
           - name: compute_plan
       - event: response
         eval: >-

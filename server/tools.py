@@ -201,8 +201,14 @@ async def retract_fact(params: FunctionCallParams, fact_id: str, reason: str = "
 async def flag_conflict(params: FunctionCallParams, fact_ids: list[str], note: str) -> None:
     """Record that two things the user said about the same item cannot both be true.
 
+    Only when they have given both as true. Someone who cannot remember which of
+    two figures it is has not contradicted themselves — they have given you a
+    range, and that is correct_fact with amount_low_rupees and amount_high_rupees.
+
     Do this instead of picking one. Until it is settled the plan uses the worse of
-    the two, and the question comes back in open_questions.
+    the two, and the question comes back in open_questions. Read back what comes
+    out of this rather than repeating the figures from memory: the read_back
+    carries the day each one falls on, and that is the part that goes missing.
 
     Args:
         fact_ids: The ids of the facts that disagree.
@@ -218,22 +224,46 @@ async def flag_conflict(params: FunctionCallParams, fact_ids: list[str], note: s
 
     conflict_id = f"conflict_{len(state.conflicts) + 1}"
     session.record(ConflictFlagged(conflict_id, tuple(fact_ids), note))
-    await _settle(params, {"conflict_id": conflict_id})
+    await _settle(
+        params,
+        {
+            "conflict_id": conflict_id,
+            "read_back": _read_back_all(state, fact_ids),
+            "say": (
+                "put both figures next to each other, with the day each one falls "
+                "on, and ask which is right. Do not pick one. If they cannot say, "
+                "call resolve_conflict with as_range set."
+            ),
+        },
+    )
 
 
 async def resolve_conflict(
-    params: FunctionCallParams, conflict_id: str, chosen_fact_id: str
+    params: FunctionCallParams,
+    conflict_id: str,
+    chosen_fact_id: str = "",
+    as_range: bool = False,
 ) -> None:
-    """Settle a flagged conflict once the user has said which figure is right.
+    """Settle a flagged conflict, either on the figure that is right or as a range.
+
+    When the user says which one it is, give chosen_fact_id. When they cannot —
+    "I honestly do not know which" — set as_range instead, and the two figures
+    become the ends of one range. Do not keep asking. An unanswerable question
+    asked twice is an interrogation, and until it is settled either way it comes
+    back in open_questions every turn.
 
     Args:
         conflict_id: The id you were given when the conflict was flagged.
         chosen_fact_id: The id of the fact that turned out to be correct.
+        as_range: True when they cannot say which is right, so the figures they
+            gave become the ends of a range instead.
     """
     session = _session(params)
     conflict = next((c for c in session.state().conflicts if c.conflict_id == conflict_id), None)
     if conflict is None:
         return await _fail(params, f"no conflict called {conflict_id}")
+    if as_range:
+        return await _resolve_as_range(params, session, conflict)
     if chosen_fact_id not in conflict.fact_ids:
         return await _fail(params, f"{chosen_fact_id} is not part of {conflict_id}")
 
@@ -241,6 +271,41 @@ async def resolve_conflict(
     await _settle(
         params,
         {"kept": chosen_fact_id, "read_back": _read_back(session.state().get(chosen_fact_id))},
+    )
+
+
+async def _resolve_as_range(params: FunctionCallParams, session: Session, conflict) -> None:
+    """The two figures become one fact carrying both ends.
+
+    A conflict is settled by the user choosing, and someone who cannot choose had
+    no way out: `resolve_conflict` insisted on one of the two ids, so the question
+    came back every turn and the intake never finished. Not knowing which of two
+    figures it is *is* a range, and a range this project already knows how to
+    carry — midpoint to plan on, ends kept so `gaps` asks again only if the
+    spread decides something.
+    """
+    state = session.state()
+    members = [f for f in (state.get(fid) for fid in conflict.fact_ids) if f is not None]
+    amounts = sorted(f.amount for f in members if f.amount is not None)
+    if len(amounts) < 2:
+        return await _fail(
+            params, "only one of these has an amount, so there is no range: choose that one"
+        )
+
+    # Whichever of them knows when it falls. The day is the part that goes
+    # missing when a figure is said twice, and dropping it here would lose it
+    # for good.
+    kept = next((f for f in members if f.day is not None), members[0])
+    low, high = amounts[0], amounts[-1]
+    session.record(
+        FactCorrected(
+            kept.fact_id, midpoint(low, high), amount_bounds=Bounds(low, high), turn=session.turn
+        ),
+        ConflictResolved(conflict.conflict_id, kept.fact_id),
+    )
+    await _settle(
+        params,
+        {"kept": kept.fact_id, "read_back": _read_back(session.state().get(kept.fact_id))},
     )
 
 
@@ -299,9 +364,36 @@ async def compute_plan(params: FunctionCallParams) -> None:
     Call this before telling the user anything about their position, and again
     after anything changes. Read the amounts back exactly as they come out: they
     are already in words. Do not add, subtract or compare anything yourself.
+
+    While anything is still missing this returns no position at all — no closing
+    balance, no shortfall, nothing that cannot be paid. There is nothing to say
+    yet, so there is nothing here to say it with.
     """
-    _, outcome, _ = _session(params).snapshot()
-    await _settle(params, _plan_payload(outcome))
+    _, outcome, gaps = _session(params).snapshot()
+    await _settle(params, _too_early(gaps) if gaps else _plan_payload(outcome))
+
+
+def _too_early(gaps: tuple[Gap, ...]) -> dict:
+    """What comes back instead of a plan while questions remain.
+
+    The rule was written in the prompt and broken on a call anyway, because the
+    payload argued the other way: it carried a closing balance, a payment it
+    called unpayable and a suggestion that began "say how much is left over" —
+    all computed over a month with no credit cards in it yet. A rule the tool
+    contradicts is a rule the model has to choose to keep. So the figures are not
+    sent, and the constraint stops depending on the model's restraint.
+    """
+    return {
+        "enough_information": False,
+        "still_to_cover": [gap.label for gap in gaps],
+        "say": (
+            "there is no position to give yet. Name what is still missing and ask "
+            "about the first of these. Do not say what is left over, what they are "
+            "short, what cannot be paid, or whether the month works — none of it is "
+            "known until the picture is whole. If they press for a figure, say "
+            "plainly that you cannot give one yet, and why."
+        ),
+    }
 
 
 async def open_questions(params: FunctionCallParams) -> None:
@@ -445,12 +537,32 @@ def _twin(session: Session, kind: str, label: str) -> str | None:
     )
 
 
+def _read_back_all(state, fact_ids: list[str]) -> str:
+    """Several facts at once, for a conflict: both figures, each with its day.
+
+    `flag_conflict` used to hand back an id and nothing else, so the model
+    described the disagreement from memory — and what memory dropped was the day.
+    """
+    facts = [f for f in (state.get(fid) for fid in fact_ids) if f is not None]
+    if not facts:
+        return ""
+    labels = {f.label for f in facts}
+    if len(labels) == 1 and facts[0].amount is not None:
+        return f"{facts[0].label}: " + ", or ".join(_said(f) for f in facts)
+    return ", or ".join(_read_back(f) for f in facts)
+
+
 def _read_back(fact: Fact | None) -> str:
     """What to say back, so a misheard figure is caught now and not in the plan."""
     if fact is None:
         return ""
     if fact.amount is None:
         return f"{fact.label}, amount not known yet"
+    return f"{fact.label}, {_said(fact)}"
+
+
+def _said(fact: Fact) -> str:
+    """The figure and when it lands, without the label in front of it."""
     # The range, never the midpoint: the midpoint is ours, and reading it back
     # would invite them to confirm a number they never said.
     spoken = (
@@ -458,12 +570,11 @@ def _read_back(fact: Fact | None) -> str:
         if fact.amount_bounds is not None
         else speak_rupees(fact.amount)
     )
-    said = f"{fact.label}, {spoken}"
     if fact.spread:
-        return f"{said} across the month"
+        return f"{spoken} across the month"
     if fact.day is not None:
-        return f"{said} on {speak_day(fact.day)}"
-    return said
+        return f"{spoken} on {speak_day(fact.day)}"
+    return spoken
 
 
 def _session(params: FunctionCallParams) -> Session:

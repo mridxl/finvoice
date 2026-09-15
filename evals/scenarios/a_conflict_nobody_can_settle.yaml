@@ -1,0 +1,69 @@
+name: a_conflict_nobody_can_settle
+judge: !include ../text_judge.yaml
+
+# From a live call. The user gave an EMI, then came back with a second figure and
+# said they were not sure which it was. Two things went wrong.
+#
+# The assistant flagged a conflict and read both figures out with no day on
+# either — because flag_conflict returned an id and nothing else, so it described
+# the disagreement from memory, and memory dropped the date the user had just
+# given it twice.
+#
+# And "I am honestly not sure which" had no answer. resolve_conflict insisted on
+# one of the two ids, so the question came back every turn and the intake never
+# finished. Not knowing which of two figures it is is a range, and a range is
+# something this planner already knows how to carry.
+
+turns:
+  - expect:
+      - event: response
+
+  - user: "Yes, go ahead."
+    expect:
+      - event: response
+
+  - user: "Salary is forty thousand on the first, and rent is fourteen thousand on the fifth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 40000, day_of_month: 1 }
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 14000, day_of_month: 5 }
+
+  - user: "My personal loan EMI is nine thousand five hundred, on the fifteenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 9500, day_of_month: 15 }
+      - event: response
+        eval: >-
+          reads it back as nine thousand five hundred rupees on the fifteenth,
+          naming the day as well as the amount.
+
+  - user: "Actually, hold on. I think the EMI might be eight thousand five hundred. I'm honestly not sure which it is. It's on the fifteenth either way."
+    expect:
+      - event: response
+        eval: >-
+          puts both figures in front of the user — nine thousand five hundred and
+          eight thousand five hundred — and names the fifteenth as the day. It
+          must not drop the day, must not silently pick one of the two figures,
+          and must not claim it has recorded either one as the answer.
+
+  - user: "I really don't know. I'd have to dig out the statement and I don't have it."
+    expect:
+      # The way out. Asking a third time is an interrogation, and they have
+      # already said they cannot answer.
+      - event: function_call
+        calls:
+          - name: resolve_conflict
+            args: { as_range: true }
+      - event: response
+        eval: >-
+          says it will work from the range between eight thousand five hundred
+          and nine thousand five hundred rupees, in words, and moves on to the
+          next question. It must NOT ask again which figure is right, must not
+          tell the user to go and find the statement before continuing, and must
+          not state a single figure such as nine thousand as though it were the
+          EMI.

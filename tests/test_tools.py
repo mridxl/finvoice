@@ -50,6 +50,23 @@ def call(tool, session: Session, **kwargs):
     return params.result
 
 
+def settled(session: Session) -> Session:
+    """A finished intake: nothing left that `open_questions` would still raise.
+
+    `compute_plan` gives no position while anything is outstanding, so a test
+    about what the plan *says* has to get there first. Closing the four
+    categories is most of it; the persona's spouse income also arrives on an
+    uncertain day, and a range that decides the outcome is exactly what the agent
+    is meant to still be asking about. Pinning it moves no figure — the planner
+    already worked from the point estimate — it only stops the question.
+    """
+    for kind in ("income", "essential", "loan_emi", "credit_card"):
+        call(record_nothing_further, session, kind=kind)
+    if session.state().get("spouse_income") is not None:
+        call(correct_fact, session, fact_id="spouse_income", day_of_month=10)
+    return session
+
+
 def intake() -> Session:
     """The BUILD-PLAN persona, recorded through the tools rather than hand-built.
 
@@ -184,6 +201,7 @@ def test_a_correction_that_says_nothing_is_refused():
 
 def test_a_retraction_removes_it_from_the_plan():
     session = intake()
+    settled(session)
     before = call(compute_plan, session)
     call(retract_fact, session, fact_id="optional_spending", reason="cancelled it")
     assert session.state().get("optional_spending") is None
@@ -232,12 +250,12 @@ def test_the_plan_the_model_reads_has_no_digit_in_it_anywhere():
     # The structural half of "the LLM never does arithmetic". There is no figure
     # in the payload to round, restate or quietly adjust — only words, which can
     # be repeated but not operated on.
-    payload = json.dumps(call(compute_plan, intake()))
+    payload = json.dumps(call(compute_plan, settled(intake())))
     assert not any(character.isdigit() for character in payload), payload
 
 
 def test_the_plan_names_what_cannot_be_paid_and_why():
-    result = call(compute_plan, intake())
+    result = call(compute_plan, settled(intake()))
     assert result["status"] == "infeasible"
     assert result["gap_if_everything_is_paid_on_time"] == "eight thousand rupees"
     assert result["first_runs_short_on"] == "the eighteenth"
@@ -248,7 +266,7 @@ def test_the_plan_names_what_cannot_be_paid_and_why():
 
 
 def test_money_left_over_beside_an_unmet_obligation_becomes_a_question_for_the_lender():
-    result = call(compute_plan, intake())
+    result = call(compute_plan, settled(intake()))
     ask = result["ask_the_lender"]
     assert ask["label"] == "Personal loan EMI"
     assert ask["money_left_over"] == "four thousand five hundred rupees"
@@ -260,6 +278,7 @@ def test_nothing_is_suggested_to_a_lender_when_the_month_already_works():
     session = Session(as_of=AS_OF)
     call(record_money_fact, session, kind="income", label="Salary", amount_rupees=50_000, day_of_month=1)
     call(record_money_fact, session, kind="essential", label="Rent", amount_rupees=10_000, day_of_month=5)
+    settled(session)
     result = call(compute_plan, session)
     assert result["status"] == "feasible"
     assert "ask_the_lender" not in result
@@ -270,6 +289,7 @@ def test_a_lender_answer_reduces_what_leaves_the_account_not_what_is_owed():
     result = call(record_lender_answer, session, fact_id="personal_loan_emi", accepts_rupees=4_500)
     assert result["read_back"] == "four thousand five hundred rupees towards Personal loan EMI"
 
+    settled(session)
     plan = call(compute_plan, session)
     assert plan["cannot_be_paid"] == []
     arranged = plan["met_by_arrangement"][0]
@@ -330,6 +350,7 @@ def test_the_plan_says_which_thirty_days_it_is_and_names_the_far_month():
     call(record_money_fact, session, kind="cash_on_hand", label="Cash in bank", amount_rupees=3_000)
     call(record_money_fact, session, kind="essential", label="Rent", amount_rupees=15_000, day_of_month=20)
     call(record_money_fact, session, kind="loan_emi", label="Education loan EMI", amount_rupees=8_000, day_of_month=10)
+    settled(session)
     result = call(compute_plan, session)
 
     assert result["planning_window"] == "the fifteenth of September to the fourteenth of October"
@@ -341,7 +362,7 @@ def test_the_plan_says_which_thirty_days_it_is_and_names_the_far_month():
 def test_a_plan_that_opens_on_the_first_names_no_months():
     # A window that does not straddle needs no disambiguating, so the dates read
     # exactly as they always did — which is why the pinned evals are unaffected.
-    result = call(compute_plan, intake())
+    result = call(compute_plan, settled(intake()))
     assert result["planning_window"] == "the first of September to the thirtieth of September"
     assert result["cannot_be_paid"][0]["due"] == "the fifteenth"
 
@@ -438,6 +459,7 @@ def test_the_dated_scenarios_figures_are_still_what_the_planner_says():
     ):
         call(record_money_fact, session, **kwargs)
 
+    settled(session)
     payload = call(compute_plan, session)
 
     assert payload["first_runs_short_on"] == "the tenth"
@@ -570,3 +592,110 @@ def test_a_different_thing_with_a_different_label_is_not_reported_as_a_duplicate
         amount_rupees=4_200, day_of_month=8,
     )
     assert "already_recorded" not in result
+
+
+def test_no_position_is_given_while_anything_is_still_missing():
+    # From a live call: with credit cards never asked about, compute_plan handed
+    # back "infeasible", seven thousand left over, a payment it called unpayable
+    # and a suggestion beginning "say how much is left over" — and the agent read
+    # it out. The rule was in the prompt; the payload argued the other way.
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="cash_on_hand", label="In account", amount_rupees=2_200)
+    call(record_money_fact, session, kind="income", label="Salary", amount_rupees=38_000, day_of_month=1)
+    call(record_money_fact, session, kind="essential", label="Rent", amount_rupees=14_000, day_of_month=5)
+    call(record_money_fact, session, kind="essential", label="School fee", amount_rupees=15_000, day_of_month=10)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI", amount_rupees=9_500, day_of_month=15)
+
+    assert call(open_questions, session)["enough_information"] is False
+    result = call(compute_plan, session)
+
+    assert result["enough_information"] is False
+    assert result["still_to_cover"]
+    # None of the figures that used to leak are reachable from the payload.
+    for leak in (
+        "status", "left_at_the_end_of_the_month", "still_short_after_all_that",
+        "gap_if_everything_is_paid_on_time", "cannot_be_paid", "first_runs_short_on",
+        "ask_the_lender",
+    ):
+        assert leak not in result, leak
+    # ensure_ascii=False, or the em dash in `say` escapes to — and the
+    # digits in the escape fail a test that is about leaked figures.
+    assert not any(character.isdigit() for character in json.dumps(result, ensure_ascii=False))
+
+
+def test_the_position_arrives_once_there_is_nothing_left_to_ask():
+    session = settled(intake())
+    result = call(compute_plan, session)
+    assert "enough_information" not in result
+    assert result["status"] == "infeasible"
+
+
+def test_flagging_a_conflict_hands_back_both_figures_with_their_days():
+    # The agent said "two conflicting EMI amounts: nine thousand five hundred and
+    # eight thousand five hundred" and named no day, because flag_conflict gave it
+    # an id and nothing else and it narrated from memory.
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=9_500, day_of_month=15)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=8_500, day_of_month=15)
+    result = call(flag_conflict, session,
+                  fact_ids=["personal_loan_emi", "personal_loan_emi_2"], note="two figures")
+    assert result["read_back"] == (
+        "Personal loan EMI: nine thousand five hundred rupees on the fifteenth, "
+        "or eight thousand five hundred rupees on the fifteenth"
+    )
+
+
+def test_a_conflict_nobody_can_settle_becomes_a_range():
+    # "I honestly don't know which it is" was unanswerable: resolve_conflict
+    # insisted on one of the two ids, so the question came back every turn and
+    # the intake never finished.
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=9_500, day_of_month=15)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=8_500, day_of_month=15)
+    call(flag_conflict, session, fact_ids=["personal_loan_emi", "personal_loan_emi_2"],
+         note="two figures")
+
+    result = call(resolve_conflict, session, conflict_id="conflict_1", as_range=True)
+
+    assert "error" not in result
+    assert session.state().open_conflicts == ()
+    facts = session.state().of_kind("loan_emi")
+    assert len(facts) == 1
+    assert facts[0].amount == from_rupees(9_000)
+    assert facts[0].amount_bounds == Bounds(from_rupees(8_500), from_rupees(9_500))
+    # The day survives the collapse. It is the part that went missing.
+    assert facts[0].day == 15
+    assert "on the fifteenth" in result["read_back"]
+    assert "between eight thousand five hundred and nine thousand five hundred" in result["read_back"]
+
+
+def test_resolving_as_a_range_keeps_the_day_from_whichever_figure_had_one():
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=9_500)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=8_500, day_of_month=15)
+    call(flag_conflict, session, fact_ids=["personal_loan_emi", "personal_loan_emi_2"],
+         note="two figures")
+    call(resolve_conflict, session, conflict_id="conflict_1", as_range=True)
+    assert session.state().of_kind("loan_emi")[0].day == 15
+
+
+def test_choosing_a_figure_still_settles_a_conflict_the_old_way():
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=9_500, day_of_month=15)
+    call(record_money_fact, session, kind="loan_emi", label="Personal loan EMI",
+         amount_rupees=8_500, day_of_month=15)
+    call(flag_conflict, session, fact_ids=["personal_loan_emi", "personal_loan_emi_2"],
+         note="two figures")
+    result = call(resolve_conflict, session, conflict_id="conflict_1",
+                  chosen_fact_id="personal_loan_emi_2")
+    assert result["kept"] == "personal_loan_emi_2"
+    facts = session.state().of_kind("loan_emi")
+    assert len(facts) == 1 and facts[0].amount == from_rupees(8_500)
+    assert facts[0].amount_bounds is None
