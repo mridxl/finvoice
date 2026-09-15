@@ -34,9 +34,10 @@ export type Covered = {
 
 export function coverage(gaps: GapItem[]): Covered[] {
   const open = new Map(gaps.filter((gap) => gap.coverage).map((gap) => [gap.fact_id, gap]));
-  // The server ranks untouched categories first, in its own asking order, so
-  // the head of that list is what the next question is about.
-  const asking = gaps.find((gap) => gap.coverage && gap.field === "existence")?.fact_id;
+  // The server ranks untouched categories first and unclosed ones last, each
+  // in its own asking order, so the head of the coverage list is what the next
+  // question is about — whether it is opening a category or sweeping one.
+  const asking = gaps.find((gap) => gap.coverage)?.fact_id;
   return CATEGORIES.map((category) => {
     const gap = open.get(category.id);
     const state: State = !gap ? "done" : gap.field === "existence" ? "empty" : "partly";

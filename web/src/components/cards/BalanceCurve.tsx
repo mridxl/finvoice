@@ -155,7 +155,7 @@ export function BalanceCurve({
           isAnimationActive={false}
         />
 
-        {firstShort > 0 && (
+        {firstShort >= 0 && (
           <ReferenceDot
             x={data[firstShort].label}
             y={data[firstShort].paise}

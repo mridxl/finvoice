@@ -7,7 +7,7 @@ import { shortDate } from "@/components/cards/parts";
 import { cn } from "@/lib/utils";
 import { usePipecatClient } from "@pipecat-ai/client-react";
 import { CheckIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { CONNECT } from "./client";
 import { useCallState, type CallState } from "./useCallState";
 import { useCards } from "./useCards";
@@ -200,6 +200,10 @@ const ORB = 160;
  * other two states are the documented overrides.
  */
 function Orb({ state }: { state: CallState }) {
+  // The canvas is nothing but motion, and the CSS rule that stills everything
+  // else cannot reach a WebGL loop. The disc underneath stays, and the label
+  // beside it already says whose turn it is.
+  const still = useSyncExternalStore(subscribeMotion, () => MOTION.matches);
   return (
     <div
       className="relative grid shrink-0 place-items-center max-lg:size-20"
@@ -208,6 +212,7 @@ function Orb({ state }: { state: CallState }) {
       {/* A bed under the canvas, so a browser without WebGL shows a quiet disc
           rather than a hole where the call should be. */}
       <span className="absolute size-[55%] rounded-full bg-white/5" />
+      {!still && (
       <div className="max-lg:origin-center max-lg:scale-[0.45]">
         <AudioVisualizerWave
           participantType={state === "listening" ? "local" : "bot"}
@@ -235,8 +240,15 @@ function Orb({ state }: { state: CallState }) {
           isThinking={state === "thinking"}
         />
       </div>
+      )}
     </div>
   );
+}
+
+const MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
+function subscribeMotion(onChange: () => void) {
+  MOTION.addEventListener("change", onChange);
+  return () => MOTION.removeEventListener("change", onChange);
 }
 
 const LABEL: Record<CallState, string> = {
