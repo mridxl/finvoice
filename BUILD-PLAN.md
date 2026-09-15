@@ -320,9 +320,28 @@ retract_fact(fact_id, reason?)
 flag_conflict(fact_ids, note)
 resolve_conflict(conflict_id, chosen_fact_id)
 record_lender_answer(fact_id, accepts_rupees)   # only after the user reports one
+record_nothing_further(kind)                    # "none at all" / "that's all of them"
 compute_plan()          -> the plan, in words, for the model to narrate
-open_questions()        -> ranked gaps
+open_questions()        -> missing categories, then ranked gaps, then sweeps
 ```
+
+`record_nothing_further` exists because `gaps.py` ranks by sensitivity, and sensitivity
+cannot see a category nobody mentioned: an unstated rent has no fact to probe and no range
+to swing, so it reads identically to a question already settled. Coverage is therefore
+tracked separately.
+
+Recording a fact is not what closes a category, though — one rent is not evidence there is
+no school fee, and a plan built on that reports money left over that the user does not
+have. A category is closed only when the user says it is finished, which is the same
+answer whether they have none at all or none beyond what is recorded. So one event covers
+both, and remembering one later reopens the category.
+
+Each category also carries what to **anchor** the question on, handed to the model in
+`open_questions` as `anchor_on`. Nobody can answer "what is your essential spending";
+anyone can say where they live and how they get to work, and the spending falls out of the
+answer. The anchor is a noun phrase naming the concrete thing to ask about — never a
+sentence to read aloud. Which question to ask stays deterministic; how to say it stays the
+model's.
 
 Note what is absent: nothing that computes. `compute_plan` returns a computed result; it
 does not accept one.

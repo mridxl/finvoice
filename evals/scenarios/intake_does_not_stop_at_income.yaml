@@ -1,0 +1,70 @@
+name: intake_does_not_stop_at_income
+judge: !include ../text_judge.yaml
+
+# From two real calls, and it holds both halves of the same mistake shut.
+#
+# The first: a salary and a cash balance, nothing else, and the assistant said
+# "you have sixty one thousand four hundred rupees left at the end of the month.
+# Does this plan work for you?" — a correct sum presented as a plan, to someone
+# who had never been asked what he spends.
+#
+# The second, after coverage was added: rent and electricity given once, and a
+# plan announcing forty two thousand left over. No food, no travel, no phone.
+# Opening a category is not the same as finishing one, and only the user can say
+# which. Neither was the model's fault — open_questions told it, both times, that
+# it had enough.
+
+turns:
+  - expect:
+      - event: response
+        eval: >-
+          sets out what it is going to ask about and says a plan for the next
+          thirty days comes out of it, then asks whether the user is ready to
+          start. It must NOT ask for any figure in this turn.
+
+  - user: "Yes, go ahead."
+    expect:
+      - event: response
+
+  - user: "My salary comes in on the twenty fifth. It's fifty two thousand rupees."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 52000, day_of_month: 25 }
+
+  - user: "And I have nine thousand four hundred in hand right now. So how am I doing?"
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: cash_on_hand, amount_rupees: 9400 }
+      - event: response
+        eval: >-
+          asks about money going out — rent, bills, loans, cards or anything that
+          has to be paid. It must NOT state how much will be left at the end of
+          the month, must not say the month works or is fine, and must not invite
+          the user to accept a plan, because nothing going out has been recorded
+          yet and any surplus is therefore meaningless.
+
+  - user: "Rent is fourteen thousand on the fifth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 14000, day_of_month: 5 }
+
+  - user: "No loans at all, and no credit cards either. I've never had one."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_nothing_further
+            args: { kind: loan_emi }
+          - name: record_nothing_further
+            args: { kind: credit_card }
+      - event: response
+        eval: >-
+          asks whether anything else goes out every month — food, travel, a phone
+          bill, money sent home or similar. One recorded rent is not the whole of
+          what a month costs, so it must NOT present a plan, state a closing
+          balance, or say the month works.

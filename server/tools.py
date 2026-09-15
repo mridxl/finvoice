@@ -16,6 +16,8 @@ restate or quietly adjust, and what it reads aloud is what the planner computed.
 Digits go to the cards, which the browser renders and never totals.
 """
 
+from datetime import date
+
 from pipecat.services.llm_service import FunctionCallParams
 
 from server.domain.events import (
@@ -28,10 +30,12 @@ from server.domain.events import (
     FactRecorded,
     FactRetracted,
     Kind,
+    NothingFurther,
 )
+from server.domain.gaps import Gap
 from server.domain.money import Money, from_rupees, speak_rupees
 from server.domain.planner import Action, PlanOutcome
-from server.domain.speech import speak_date, speak_day
+from server.domain.speech import speak_date, speak_day, speak_month_day
 from server.session import Session
 
 KINDS: tuple[Kind, ...] = (
@@ -226,6 +230,26 @@ async def record_lender_answer(
     )
 
 
+async def record_nothing_further(params: FunctionCallParams, kind: str) -> None:
+    """Record that a category is finished — none at all, or none beyond what you have.
+
+    Call this in both situations: when you ask whether they have something and
+    they say they have none, and when you ask whether that is all of them and
+    they say it is. It is the only way a category stops coming back in
+    open_questions, so without it you will keep being told to ask again. If they
+    remember one later, just record it and this is superseded.
+
+    Args:
+        kind: The category that is finished. One of income, loan_emi,
+            credit_card, essential, optional, cash_on_hand.
+    """
+    if kind not in KINDS:
+        return await _fail(params, f"kind must be one of: {', '.join(KINDS)}")
+    session = _session(params)
+    session.record(NothingFurther(kind=kind, turn=session.turn))  # type: ignore[arg-type]
+    await _settle(params, {"recorded": f"nothing further of kind {kind}"})
+
+
 async def compute_plan(params: FunctionCallParams) -> None:
     """Work out the next thirty days, and get back what there is to say about it.
 
@@ -240,27 +264,29 @@ async def compute_plan(params: FunctionCallParams) -> None:
 async def open_questions(params: FunctionCallParams) -> None:
     """Get the questions still worth asking, the most decision-changing one first.
 
-    Each one has been measured: asking it would change the plan. An empty list
-    means there is nothing left worth asking, and you should stop gathering
-    information and talk about the plan instead.
+    Each one has been measured: asking it would change the plan, or the category
+    it belongs to is still open. Some come with an anchor_on, which is the
+    concrete thing to ask about. An empty list means there is nothing left worth
+    asking, and you should stop gathering information and talk about the plan.
     """
     _, _, gaps = _session(params).snapshot()
     await _settle(
         params,
-        {
-            "enough_information": not gaps,
-            "questions": [
-                {
-                    "fact_id": gap.fact_id,
-                    "label": gap.label,
-                    "ask_about": gap.field,
-                    "impact": gap.impact,
-                    "why_it_matters": gap.why,
-                }
-                for gap in gaps
-            ],
-        },
+        {"enough_information": not gaps, "questions": [_question_payload(g) for g in gaps]},
     )
+
+
+def _question_payload(gap: Gap) -> dict:
+    payload = {
+        "fact_id": gap.fact_id,
+        "label": gap.label,
+        "ask_about": gap.field,
+        "impact": gap.impact,
+        "why_it_matters": gap.why,
+    }
+    if gap.ask:
+        payload["anchor_on"] = gap.ask
+    return payload
 
 
 TOOLS = [
@@ -270,6 +296,7 @@ TOOLS = [
     flag_conflict,
     resolve_conflict,
     record_lender_answer,
+    record_nothing_further,
     compute_plan,
     open_questions,
 ]
@@ -277,15 +304,22 @@ TOOLS = [
 
 def _plan_payload(outcome: PlanOutcome) -> dict:
     """The plan as the model may repeat it: words, never figures."""
+    since = outcome.starts_on
     payload = {
         "status": outcome.status,
+        # Thirty days from today, which is not the same as this month. Said aloud
+        # so the user orders the dates the way the plan does: on the fifteenth,
+        # "the twentieth" is five days away and "the fifth" is twenty.
+        "planning_window": (
+            f"{speak_month_day(since)} to {speak_month_day(outcome.ends_on)}"
+        ),
         "money_in_hand_now": speak_rupees(outcome.opening),
         "left_at_the_end_of_the_month": speak_rupees(outcome.closing),
         "gap_if_everything_is_paid_on_time": speak_rupees(outcome.baseline_gap),
-        "first_runs_short_on": speak_date(outcome.first_shortfall_on),
-        "spending_to_cut": [_action_payload(a) for a in outcome.cuts],
-        "met_by_arrangement": [_action_payload(a) for a in outcome.arranged],
-        "cannot_be_paid": [_action_payload(a) for a in outcome.unpaid],
+        "first_runs_short_on": speak_date(outcome.first_shortfall_on, since),
+        "spending_to_cut": [_action_payload(a, since) for a in outcome.cuts],
+        "met_by_arrangement": [_action_payload(a, since) for a in outcome.arranged],
+        "cannot_be_paid": [_action_payload(a, since) for a in outcome.unpaid],
         "assumptions": list(outcome.assumptions),
     }
     if outcome.shortfall:
@@ -318,12 +352,12 @@ def _ask_the_lender(outcome: PlanOutcome) -> dict | None:
     }
 
 
-def _action_payload(action: Action) -> dict:
+def _action_payload(action: Action, since: date) -> dict:
     payload = {
         "fact_id": action.fact_id,
         "label": action.label,
         "amount": speak_rupees(action.amount),
-        "due": speak_date(action.on),
+        "due": speak_date(action.on, since),
         "reason": action.reason,
     }
     if action.paid:

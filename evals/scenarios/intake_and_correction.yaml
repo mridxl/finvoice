@@ -9,8 +9,9 @@ turns:
   - expect:
       - event: response
         eval: >-
-          introduces itself and asks about money coming in, and states no amount
-          of money of its own
+          introduces itself, says what it is going to ask the user about, and
+          asks whether they are ready to start. It states no amount of money of
+          its own.
 
   - user: "My take home salary is thirty eight thousand rupees, and it lands on the first."
     expect:

@@ -10,7 +10,7 @@ up and the ledger stays checkable by hand.
 
 from datetime import date
 
-from server.domain.events import Bounds, Fact, FactRecorded
+from server.domain.events import Bounds, Fact, FactRecorded, NothingFurther
 from server.domain.money import from_rupees
 
 AS_OF = date(2026, 9, 1)
@@ -36,6 +36,11 @@ GOLDEN = [
     fact("household", "essential", "Household essentials", 11_000, spread=True),
     fact("optional", "optional", "Optional spending", 3_000, spread=True),
 ]
+
+# Every category closed off by the user. Recording facts is not enough to finish
+# a category — one rent is not evidence there is no school fee — so a log meant
+# to stand for a completed intake has to say so, in the four places it matters.
+SWEPT = [NothingFurther(k) for k in ("income", "essential", "loan_emi", "credit_card")]
 
 # Feasible on monthly totals, broken on dates: 31,000 in against 25,000 out, but
 # the money arrives on the 28th and the bill is due on the 5th. A planner that

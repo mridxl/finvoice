@@ -27,7 +27,7 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 from server import providers
-from server.prompt import SYSTEM_PROMPT
+from server.prompt import system_prompt
 from server.session import Session
 from server.tools import TOOLS
 
@@ -39,7 +39,7 @@ def build_pipeline(transport, session: Session) -> Pipeline:
     vad, turn_analyzer = providers.make_turn_strategies()
     # The system prompt lives on the service, not in the context, so replacing
     # the context — which is how an eval seeds a conversation — cannot drop it.
-    llm = providers.make_llm(SYSTEM_PROMPT)
+    llm = providers.make_llm(system_prompt(session.as_of))
     context = LLMContext(tools=TOOLS)
     aggregators = LLMContextAggregatorPair(
         context,

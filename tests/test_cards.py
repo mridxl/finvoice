@@ -8,7 +8,7 @@ from server.domain.gaps import rank_gaps
 from server.domain.money import from_rupees
 from server.domain.planner import plan
 from server.domain.state import fold
-from tests.golden import AS_OF, GOLDEN
+from tests.golden import AS_OF, GOLDEN, SWEPT
 
 
 def cards_for(log):
@@ -78,8 +78,18 @@ def test_the_ledger_card_is_the_arithmetic_a_reviewer_can_check():
 
 
 def test_the_missing_info_card_carries_the_ranked_questions():
-    items = cards_for(GOLDEN)["missing_info"]["body"]["items"]
+    items = cards_for([*GOLDEN, *SWEPT])["missing_info"]["body"]["items"]
     assert [(i["fact_id"], i["impact"]) for i in items] == [("spouse", "high")]
+
+
+def test_the_card_admits_a_category_nobody_has_closed():
+    # The card is the ranking projected, so "still to confirm" cannot quietly
+    # disagree with what the assistant is about to ask. Without the sweep both
+    # would say the same wrong thing: that a salary and a rent is a finished
+    # picture of the month.
+    items = cards_for(GOLDEN)["missing_info"]["body"]["items"]
+    sweeps = [i for i in items if i["field"] == "completeness"]
+    assert {i["fact_id"] for i in sweeps} == {"money_in", "essentials", "loans", "cards"}
 
 
 def test_the_actions_card_shows_an_arrangement_with_what_remains_owed():

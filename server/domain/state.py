@@ -18,6 +18,7 @@ from server.domain.events import (
     FactRecorded,
     FactRetracted,
     Kind,
+    NothingFurther,
 )
 from server.domain.money import Money
 
@@ -48,6 +49,11 @@ class Conflict:
 class FinancialState:
     facts: tuple[Fact, ...] = ()
     conflicts: tuple[Conflict, ...] = ()
+    # Categories the user has said are finished — none at all, or none beyond
+    # what is recorded. Distinct from having no fact of that kind, which only
+    # means nobody has asked, and from having one, which only means nobody has
+    # asked whether there are others.
+    declared_complete: frozenset[Kind] = frozenset()
     history: Mapping[str, tuple[Revision, ...]] = None  # type: ignore[assignment]
     version: int = 0
 
@@ -115,11 +121,15 @@ def fold(events: Sequence[Event]) -> FinancialState:
     facts: dict[str, Fact] = {}
     history: dict[str, tuple[Revision, ...]] = {}
     conflicts: dict[str, Conflict] = {}
+    complete: set[Kind] = set()
 
     for event in events:
         match event:
             case FactRecorded(fact=fact):
                 facts[fact.fact_id] = fact
+                # Remembering one reopens the category: they said that was all of
+                # them, and it turned out not to be.
+                complete.discard(fact.kind)
 
             case FactCorrected(fact_id=fact_id):
                 previous = facts.get(fact_id)
@@ -149,6 +159,9 @@ def fold(events: Sequence[Event]) -> FinancialState:
                 if previous is not None:
                     facts[fact_id] = replace(previous, part_payment=event.accepts)
 
+            case NothingFurther(kind=kind):
+                complete.add(kind)
+
             case ConflictFlagged(conflict_id=conflict_id):
                 conflicts[conflict_id] = Conflict(conflict_id, event.fact_ids, event.note)
 
@@ -164,6 +177,7 @@ def fold(events: Sequence[Event]) -> FinancialState:
     return FinancialState(
         facts=tuple(facts.values()),
         conflicts=tuple(conflicts.values()),
+        declared_complete=frozenset(complete),
         history=history,
         version=len(events),
     )

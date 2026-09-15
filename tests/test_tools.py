@@ -22,6 +22,7 @@ from server.tools import (
     open_questions,
     record_lender_answer,
     record_money_fact,
+    record_nothing_further,
     resolve_conflict,
     retract_fact,
 )
@@ -258,12 +259,82 @@ def test_the_question_to_ask_next_is_the_one_that_changes_the_plan():
 
 
 def test_a_settled_month_has_nothing_left_worth_asking():
+    # Settled means every category closed, not merely every recorded figure
+    # pinned down. "No loans" has to be said before it counts as known, and so
+    # does "that is all my rent and bills" — a salary and a rent is what the
+    # second demo had when it announced a plan.
     session = Session(as_of=AS_OF)
     call(record_money_fact, session, kind="income", label="Salary", amount_rupees=50_000, day_of_month=1)
     call(record_money_fact, session, kind="essential", label="Rent", amount_rupees=10_000, day_of_month=5)
+    assert call(open_questions, session)["enough_information"] is False
+
+    for kind in ("income", "essential", "loan_emi", "credit_card"):
+        call(record_nothing_further, session, kind=kind)
     result = call(open_questions, session)
     assert result["enough_information"] is True
     assert result["questions"] == []
+
+
+def test_recording_only_income_does_not_count_as_enough():
+    # The demo: salary and cash in hand, and the assistant announced a plan.
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="income", label="Salary", amount_rupees=52_000, day_of_month=25)
+    call(record_money_fact, session, kind="cash_on_hand", label="Cash in hand", amount_rupees=9_400)
+    result = call(open_questions, session)
+    assert result["enough_information"] is False
+    assert result["questions"][0]["ask_about"] == "existence"
+    assert {q["fact_id"] for q in result["questions"]} == {
+        "essentials", "loans", "cards", "money_in",
+    }
+
+
+def test_the_plan_says_which_thirty_days_it_is_and_names_the_far_month():
+    # The demo's undoing: from the fifteenth the twentieth falls five days in and
+    # the salary not until October, so "the twentieth" alone reads as the wrong
+    # end of the month. The window is stated, and any date past September named.
+    session = Session(as_of=date(2026, 9, 15))
+    call(record_money_fact, session, kind="cash_on_hand", label="Cash in bank", amount_rupees=3_000)
+    call(record_money_fact, session, kind="essential", label="Rent", amount_rupees=15_000, day_of_month=20)
+    call(record_money_fact, session, kind="loan_emi", label="Education loan EMI", amount_rupees=8_000, day_of_month=10)
+    result = call(compute_plan, session)
+
+    assert result["planning_window"] == "the fifteenth of September to the fourteenth of October"
+    assert result["first_runs_short_on"] == "the twentieth"  # September, so bare
+    # Nothing can be met, and the EMI's own date is in the window's far month.
+    assert result["cannot_be_paid"][0]["due"] == "the tenth of October"
+
+
+def test_a_plan_that_opens_on_the_first_names_no_months():
+    # A window that does not straddle needs no disambiguating, so the dates read
+    # exactly as they always did — which is why the pinned evals are unaffected.
+    result = call(compute_plan, intake())
+    assert result["planning_window"] == "the first of September to the thirtieth of September"
+    assert result["cannot_be_paid"][0]["due"] == "the fifteenth"
+
+
+def test_a_coverage_question_hands_over_something_answerable_to_ask():
+    # "Do you have any essential spending" asks a person to audit their own life
+    # from a blank page, out loud. What comes back instead is the concrete thing
+    # to ask about, so the model does not have to invent one.
+    session = Session(as_of=AS_OF)
+    call(record_money_fact, session, kind="income", label="Salary", amount_rupees=75_000, day_of_month=1)
+    first = call(open_questions, session)["questions"][0]
+    assert first["fact_id"] == "essentials"
+    assert "how they get to work" in first["anchor_on"]
+
+
+def test_an_ordinary_question_carries_no_anchor():
+    # A fact already knows what it is about, and an anchor there would be the
+    # domain writing the model's lines for no reason.
+    first = call(open_questions, intake())["questions"][0]
+    assert first["label"] == "Spouse income"
+    assert "anchor_on" not in first
+
+
+def test_a_category_can_only_be_closed_with_a_kind_the_tools_know():
+    session = Session(as_of=AS_OF)
+    result = call(record_nothing_further, session, kind="mortgage")
+    assert "kind must be one of" in result["error"]
 
 
 def schemas():

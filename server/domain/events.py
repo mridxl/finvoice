@@ -115,6 +115,24 @@ class ArrangementConfirmed:
 
 
 @dataclass(frozen=True)
+class NothingFurther:
+    """A category is finished: none at all, or none beyond what is already recorded.
+
+    Both readings are the same answer — "that is everything of this kind" — and
+    both are answers rather than absences. Without this, "no credit cards" is
+    indistinguishable from "nobody has asked about credit cards yet", and "those
+    are all my loans" from "one loan is recorded and we stopped there". `gaps`
+    could then only choose between nagging about a category forever and never
+    raising it again. Recording a fact of the same kind afterwards supersedes it,
+    because people remember.
+    """
+
+    kind: Kind
+    verbatim: str = ""
+    turn: int = 0
+
+
+@dataclass(frozen=True)
 class ConflictFlagged:
     """Two statements about the same thing that cannot both be true."""
 
@@ -134,6 +152,7 @@ Event = (
     | FactCorrected
     | FactRetracted
     | ArrangementConfirmed
+    | NothingFurther
     | ConflictFlagged
     | ConflictResolved
 )
