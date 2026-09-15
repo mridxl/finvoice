@@ -30,11 +30,30 @@ def _env(name: str, default: str = "") -> str:
 # the mistake.
 DEFAULT_LLM_MODELS = {"openai": "gpt-5.6-luna", "google": "gemini-3.8-flash"}
 
-# Reasoning efforts `gpt-5.6-luna` documents, in its own order. Checked against
-# OpenAI's model page rather than assumed: the set is per-model, and it does not
-# include "minimal" — naming it after the Gemini setting would earn a 400 on the
-# first turn, which is the failure this list exists to prevent.
+# How much each provider's default model is allowed to think before answering.
+# Two vocabularies because they are two APIs: OpenAI's `reasoning_effort` and
+# Gemini's `thinking_level` share words but not sets, and a value from one
+# earns a 400 from the other on the first turn, mid-call. Each set below was
+# checked against the model it names, so they are enforced only while that
+# model is the one in play — a pinned LLM_MODEL is on its own vocabulary.
+#
+# gpt-5.6-luna documents none, low, medium, high, xhigh, max. But every turn
+# of this agent carries function tools, and on /v1/chat/completions the model
+# takes tools at "none" and nothing else — including its own default. Not on
+# the model page; learned from the eval suite going 0 for 9 and confirmed
+# against OpenAI's forum. Lift when OpenAI does, or when `providers.py` moves
+# to the Responses API, which has no such rule.
 REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh", "max")
+TOOL_SAFE_EFFORTS = ("none",)
+
+# gemini-3.8-flash takes low, medium, high. It refuses "minimal" — the level
+# older Gemini models accepted — and Pipecat 1.10.0 predates 3.8, so it clamps
+# nothing and forwards whatever it is given.
+THINKING_LEVELS = ("low", "medium", "high")
+
+# Turn detection has two implementations and no third; anything else used to
+# fall silently to VAD.
+TURN_DETECTIONS = ("smart", "vad")
 
 # What each seam may actually be pointed at. `providers.py` branches on exactly
 # these names and raises on anything else — which used to be discovered on the
@@ -78,25 +97,16 @@ class Config:
     # constructing a Config directly behaves the same way the app does.
     llm_model: str = field(default_factory=lambda: _env("LLM_MODEL"))
 
-    # Gemini only. Gemini 3 models think before answering, and thinking tokens
-    # are billed at the output rate as well as spent on latency — on a voice
-    # call both are felt, so the lowest a model will accept is what we want.
-    #
-    # "low", not "minimal": gemini-3.8-flash and gemini-3.7-flash both reject
-    # MINIMAL with a 400. Pipecat 1.10.0 clamps only 3.7 (it predates 3.8), so
-    # it will happily send a level the model refuses — which is why this is a
-    # setting, and why its default is the one the default model actually takes.
+    # Gemini only. Thinking tokens bill at the output rate and are spent on
+    # latency; on a voice call both are felt, so the lowest the default model
+    # accepts. See THINKING_LEVELS.
     thinking_level: str = _env("GEMINI_THINKING_LEVEL", "low")
 
-    # OpenAI's half of the same problem, and it had no control at all until a
-    # call spent twelve seconds of silence producing a greeting. GPT-5 models
-    # reason before answering and default to "medium".
-    #
-    # "low", not "none": OpenAI's own guidance puts tool use and multi-step
-    # decisions — which is the whole of this agent — under "low", and reserves
-    # "none" for classification and retrieval. Drop it to "none" if the silence
-    # still costs more than the judgement is worth.
-    reasoning_effort: str = _env("OPENAI_REASONING_EFFORT", "low")
+    # OpenAI only. Not a latency choice: the only value the API takes with tools
+    # on this endpoint, see TOOL_SAFE_EFFORTS. It is also the fast one — 2.3s to
+    # a greeting against 3.5s at "low", measured, after a call once spent twelve
+    # seconds of silence on a greeting with nothing pinning this at all.
+    reasoning_effort: str = _env("OPENAI_REASONING_EFFORT", "none")
 
     # smart | vad. Smart Turn v3 judges whether an utterance sounds finished;
     # a fixed silence threshold either clips people mid-number or feels slow.
@@ -164,12 +174,32 @@ class Config:
             for name, value in chosen.items()
             if value not in PROVIDERS[name]
         ]
-        # Caught here rather than by the API, because the API catches it on the
-        # first turn — mid-call, after the caller has already said hello.
-        if self.llm_provider == "openai" and self.reasoning_effort not in REASONING_EFFORTS:
+        if self.turn_detection not in TURN_DETECTIONS:
             complaints.append(
-                f"OPENAI_REASONING_EFFORT={self.reasoning_effort!r} is not one of: "
-                f"{', '.join(REASONING_EFFORTS)}"
+                f"TURN_DETECTION={self.turn_detection!r} is not one of: "
+                f"{', '.join(TURN_DETECTIONS)}"
+            )
+        # Caught here rather than by the API, because the API catches it on the
+        # first turn — mid-call, after the caller has already said hello. Only
+        # for the default model: the sets were checked against it and no other.
+        if self.llm_model != DEFAULT_LLM_MODELS.get(self.llm_provider):
+            return complaints
+        if self.llm_provider == "openai":
+            if self.reasoning_effort not in REASONING_EFFORTS:
+                complaints.append(
+                    f"OPENAI_REASONING_EFFORT={self.reasoning_effort!r} is not one of: "
+                    f"{', '.join(REASONING_EFFORTS)}"
+                )
+            elif self.reasoning_effort not in TOOL_SAFE_EFFORTS:
+                complaints.append(
+                    f"OPENAI_REASONING_EFFORT={self.reasoning_effort!r} is refused alongside "
+                    f"function tools on /v1/chat/completions; use one of: "
+                    f"{', '.join(TOOL_SAFE_EFFORTS)}"
+                )
+        if self.llm_provider == "google" and self.thinking_level not in THINKING_LEVELS:
+            complaints.append(
+                f"GEMINI_THINKING_LEVEL={self.thinking_level!r} is not one of: "
+                f"{', '.join(THINKING_LEVELS)}"
             )
         return complaints
 

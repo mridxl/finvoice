@@ -175,7 +175,42 @@ def test_a_reasoning_effort_the_model_rejects_is_caught_before_the_call():
     assert any("OPENAI_REASONING_EFFORT" in c and "minimal" in c for c in complaints)
     assert Config(llm_provider="openai", reasoning_effort="none").unknown_providers() == []
     # Only OpenAI reads it, so a Gemini run is not held to OpenAI's vocabulary.
-    assert Config(llm_provider="google", reasoning_effort="minimal").unknown_providers() == []
+    gemini = Config(llm_provider="google", thinking_level="low", reasoning_effort="minimal")
+    assert gemini.unknown_providers() == []
+
+
+def test_an_effort_the_model_documents_but_refuses_with_tools_is_caught_too():
+    # "low" is on the model page. It is also a 400 on the greeting, because the
+    # greeting carries tools and /v1/chat/completions takes tools only at
+    # "none". The eval suite found this; the validator now knows it.
+    complaints = Config(llm_provider="openai", reasoning_effort="low").unknown_providers()
+    assert any("OPENAI_REASONING_EFFORT" in c and "tools" in c for c in complaints)
+    # And the default is the one value that works, so a blank .env is a working one.
+    assert Config(llm_provider="openai").reasoning_effort == "none"
+
+
+def test_a_thinking_level_gemini_rejects_is_caught_the_same_way():
+    # The Gemini half of the same seam. "minimal" was older Gemini's floor and
+    # 3.8-flash refuses it; Pipecat forwards it unclamped.
+    complaints = Config(llm_provider="google", thinking_level="minimal").unknown_providers()
+    assert any("GEMINI_THINKING_LEVEL" in c and "minimal" in c for c in complaints)
+    assert Config(llm_provider="google", thinking_level="low").unknown_providers() == []
+    # Only Gemini reads it.
+    assert Config(llm_provider="openai", thinking_level="minimal").unknown_providers() == []
+
+
+def test_a_pinned_model_is_not_held_to_the_default_models_vocabulary():
+    # The sets were checked against the defaults and nothing else. A pinned
+    # model may well take "low" with tools, or "minimal"; we do not know, so
+    # we do not complain.
+    assert Config(llm_provider="openai", llm_model="gpt-5-mini", reasoning_effort="low").unknown_providers() == []
+    assert Config(llm_provider="google", llm_model="gemini-3.6-flash", thinking_level="minimal").unknown_providers() == []
+
+
+def test_a_turn_detection_typo_is_caught_instead_of_falling_to_vad():
+    complaints = Config(turn_detection="Smart").unknown_providers()
+    assert any("TURN_DETECTION" in c and "Smart" in c for c in complaints)
+    assert Config(turn_detection="vad").unknown_providers() == []
 
 
 def test_an_unknown_provider_does_not_crash_the_complaint_itself():
