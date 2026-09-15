@@ -468,6 +468,34 @@ arithmetic: `numbers_come_from_the_planner` pins the figures with `text_contains
 whether the assistant said "seven thousand rupees" is settled by a substring and not by
 an opinion.
 
+### 7.1 What each default costs
+
+**Speech providers trade accounts against latency.** Cartesia is the default because time
+to first byte is under 100ms and a voice call has about a second to work with. Pointing
+both speech seams at OpenAI drops the system to two accounts — `DAILY_API_KEY` and
+`OPENAI_API_KEY` — for roughly 200–400ms more per reply, which is a large share of that
+budget. `TTS_PROVIDER=deepgram` is the middle option and the one to reach for when a
+Cartesia key runs dry: `DEEPGRAM_API_KEY` then covers both seams, and the failure it fixes
+is a call that connects and never speaks.
+
+**`GEMINI_THINKING_LEVEL` is pinned for the same reason `VAD_STOP_SECS` is** — the default
+is wrong for this workload. Gemini 3 models think before answering; those tokens cost
+latency on a live call and bill at the output rate. Keep it as low as the model accepts:
+`gemini-3.8-flash` and `gemini-3.7-flash` both reject `minimal` with a 400 on the first
+turn, and Pipecat 1.10.0 only knows to clamp 3.7 — so it will forward a level the model
+refuses and the call dies mid-conversation rather than at startup.
+
+**Google keys have to be made in AI Studio.** Google now rejects unrestricted standard keys
+and blocks dormant ones; keys created in AI Studio today are auth keys and work. A key in
+either bad state is tagged in the console, which is the only place it is visible — from
+this side it is an auth failure at the first turn.
+
+**Pipecat's deferred imports have to be warmed at startup.** It defers a large set of
+imports and warms them inside pipeline setup, on a worker thread, against a twenty-second
+budget shared with joining Daily and opening two speech sockets. The first call in a fresh
+process loses that race; every call after it sets up in about a millisecond, because the
+modules are then in `sys.modules`. `lifespan` pays it once, where nothing is waiting.
+
 ---
 
 ## 8. Known risks
