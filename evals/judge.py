@@ -12,30 +12,39 @@ A yardstick that moves whenever you tune the thing being measured is not a
 yardstick, so the judge runs the model named below and a scenario that genuinely
 wants another says so with `model:` in its own `judge.eval` block.
 
-**Why the judge is a Flash-Lite model and not the one under test.** The harness
-caps the judge's reply at 200 tokens and offers no way to raise it — our factory
-hands back a service, not the `EvalJudge`. Gemini 3 Flash counts thinking tokens
-against that cap and will not think below `low`, so it truncated its own verdict
-mid-JSON (`{"ver`) on a long conversation, which reads as a failed judge call
-rather than as a verdict. The Flash-Lite models accept `minimal` and answer well
-inside the budget. Measured, not assumed.
+**Why the Gemini judge is Flash-Lite and not the model under test.** The
+harness caps the judge's reply at 200 tokens and offers no way to raise it — our
+factory hands back a service, not the `EvalJudge`. Gemini 3 Flash counts
+thinking tokens against that cap and will not think below `low`, so it truncated
+its own verdict mid-JSON (`{"ver`) on a long conversation, which reads as a
+failed judge call rather than as a verdict. Flash-Lite accepts `minimal` and
+answers well inside the budget. Measured, not assumed.
 
-That the examiner is then a different model from the one under test is a
-happy side effect: judging a model with one from its own family shares blind
-spots. The remaining overlap is acceptable because every criterion in
-`scenarios/` asks about something observable — did it state a figure, did it
-claim to have contacted a lender — rather than about subtle quality.
+**Why the OpenAI judge is the bot's own model.** The same cap, the same trap:
+`gpt-5-mini` with nothing pinned reasoned the whole budget away and returned an
+empty verdict on seven scenarios out of eight. The bot already runs
+`gpt-5.6-luna` with reasoning off, validated at startup, and a judge that reads
+a transcript and writes one line of JSON needs no more thought than that. So it
+reuses the bot's default model and the bot's validated effort — one model table
+and one setting to be wrong about, not three.
+
+The examiner sharing a family with the examinee shares its blind spots. That is
+acceptable because every criterion in `scenarios/` asks about something
+observable — did it state a figure, did it claim to have contacted a lender —
+rather than about subtle quality.
 """
 
 from typing import Any
 
 from server.config import DEFAULT_LLM_MODELS, config
 
-# Paired deliberately: the level is hard-coded because the model is too, and the
-# two were verified together. A scenario overriding `model:` must pick one that
-# accepts `minimal` — Gemini 3 Flash does not, and says so with a 400.
-JUDGE_MODELS = {"google": "gemini-3.5-flash-lite", "openai": "gpt-5-mini"}
-JUDGE_THINKING = "minimal"
+# Gemini only. Paired deliberately: the level is hard-coded because the model
+# is too, and the two were verified together. A scenario overriding `model:`
+# must pick one that accepts `minimal` — Gemini 3 Flash does not, and says so
+# with a 400. OpenAI has no entry here on purpose: its judge is the bot's
+# default, see the module docstring.
+JUDGE_MODELS = {"google": "gemini-3.5-flash-lite"}
+GEMINI_JUDGE_THINKING = "minimal"
 
 
 def from_env(block: dict) -> Any:
@@ -59,7 +68,7 @@ def from_env(block: dict) -> Any:
                 # Only the one-line JSON verdict is ever read, so thinking buys
                 # nothing here and competes with the verdict for the 200 tokens
                 # the harness allows — see the module docstring.
-                thinking=GoogleLLMService.ThinkingConfig(thinking_level=JUDGE_THINKING),
+                thinking=GoogleLLMService.ThinkingConfig(thinking_level=GEMINI_JUDGE_THINKING),
             ),
         )
 
@@ -68,7 +77,11 @@ def from_env(block: dict) -> Any:
 
         return OpenAILLMService(
             api_key=config.openai_api_key,
-            settings=OpenAILLMService.Settings(model=model),
+            settings=OpenAILLMService.Settings(
+                model=model,
+                # Same value, same reason, same catch-all as `providers.py`.
+                extra={"reasoning_effort": config.reasoning_effort},
+            ),
         )
 
     raise ValueError(f"no judge for LLM_PROVIDER: {config.llm_provider!r}")
