@@ -14,8 +14,7 @@ narrates results — nothing else. If you find yourself writing a prompt that as
 model to add, subtract, compare, or total anything, stop: that logic belongs in
 `server/domain/planner.py`.
 
-This is the architectural thesis of the whole submission. Do not erode it for
-convenience.
+This is the architectural thesis of the project. Do not erode it for convenience.
 
 ### 2. Money is `int` paise. Never float
 
@@ -86,8 +85,7 @@ cost us the eval path.
 
 ## Code standards
 
-- **Keep it short.** The brief says so and the live session depends on it. Every file
-  should be explainable in one sentence.
+- **Keep it short.** Every file should be explainable in one sentence.
 - `domain/` is pure: no I/O, no network, no async, no clock reads. `as_of` is passed in.
   This is what makes it testable and is the reason the tests need no LLM.
 - Type hints on every domain function. They are the documentation.
@@ -99,7 +97,8 @@ cost us the eval path.
 
 - `tests/` is rule-based and deterministic: no LLM, no network, no sleep.
 - `evals/scenarios/*.yaml` is LLM-judged behaviour via `pipecat eval run`.
-- Keep those two separate. The separation is itself a graded item (SPEC §8, Track B).
+- Keep those two separate: a substring check is not an opinion, and an opinion is not
+  a substring check.
 - Every bug found by hand becomes a permanent test.
 
 ## Voice output rules
@@ -161,5 +160,4 @@ resolving it across the Windows mount is slow.
 
 `uv.lock` is resolved on Linux and committed. Do not regenerate it on Windows.
 
-No second terminal may ever be required to start the app. That is a hard submission
-requirement.
+No second terminal may ever be required to start the app.
