@@ -24,7 +24,7 @@ from typing import Literal
 
 from server.domain.events import Bounds, Fact, Kind
 from server.domain.money import format_rupees, from_rupees
-from server.domain.planner import PlanOutcome, plan
+from server.domain.planner import Action, PlanOutcome, plan
 from server.domain.state import FinancialState
 
 # A swing smaller than this is noise in a household budget, not a question.
@@ -187,7 +187,10 @@ def rank_gaps(state: FinancialState, as_of: date) -> tuple[Gap, ...]:
     #
     # "Is that everything?" goes last, for the mirror reason. It is what remains
     # once nothing else is worth asking, and interrupting with it after every
-    # answer is exactly how an intake turns into an interview.
+    # answer is exactly how an intake turns into an interview. Within that tier
+    # the order flips: what goes out is swept before what comes in, because a
+    # forgotten outgoing makes the plan wrong in the direction that hurts and a
+    # forgotten income only makes it cautious.
     return (*missing, *ranked, *sweeps)
 
 
@@ -207,7 +210,7 @@ def _coverage(state: FinancialState) -> tuple[list[Gap], list[Gap]]:
     have = {fact.kind for fact in state.facts}
     missing: list[Gap] = []
     sweeps: list[Gap] = []
-    for cat in COVERAGE:
+    for cat in sorted(COVERAGE, key=lambda c: "income" in c.kinds):
         if state.declared_complete.intersection(cat.kinds):
             continue
         if have.intersection(cat.kinds):
@@ -269,5 +272,5 @@ def _classify(low: PlanOutcome, high: PlanOutcome) -> tuple[Impact, str] | None:
     return None
 
 
-def _ids(actions) -> tuple[str, ...]:
+def _ids(actions: tuple[Action, ...]) -> tuple[str, ...]:
     return tuple(sorted(a.fact_id for a in actions))

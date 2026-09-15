@@ -67,15 +67,20 @@ async def record_money_fact(
     recorded honestly and asked about later. Never put a number here that the user
     did not say.
 
+    One figure, even an approximate one, goes in amount_rupees: "about two thousand
+    two hundred" is amount_rupees=2200. A range has two different ends, and both
+    are given together. The same goes for days: "usually around the tenth" is
+    day_of_month=10, and day_earliest and day_latest are only ever given as a pair.
+
     Args:
         kind: One of income, loan_emi, credit_card, essential, optional, cash_on_hand.
         label: What it is, in their words. "Rent", "Personal loan EMI", "School fee".
         amount_rupees: The amount in rupees, if they gave one.
         day_of_month: The day of the month it lands on, 1 to 31, if they gave one.
-        amount_low_rupees: Lowest it could be, when they gave a range or were unsure.
-        amount_high_rupees: Highest it could be, when they gave a range or were unsure.
-        day_earliest: Earliest day it could land on, when the date is not firm.
-        day_latest: Latest day it could land on, when the date is not firm.
+        amount_low_rupees: Lowest it could be, when they gave a range. Always with amount_high_rupees.
+        amount_high_rupees: Highest it could be, when they gave a range. Always with amount_low_rupees.
+        day_earliest: Earliest day it could land on, when they gave a spread of days. Always with day_latest.
+        day_latest: Latest day it could land on, when they gave a spread of days. Always with day_earliest.
         spread: True when it trickles out across the month rather than landing on
             one day, like groceries or fuel.
         secured: True when a loan is secured against something that can be taken
@@ -86,6 +91,17 @@ async def record_money_fact(
         return await _fail(params, f"kind must be one of: {', '.join(KINDS)}")
     if (bad := _bad_day(day_of_month, day_earliest, day_latest)) is not None:
         return await _fail(params, bad)
+    # A range with one end is not a range, and one whose ends meet is a figure.
+    # Both used to be dropped without a word, and the model then read back the
+    # figure it remembered rather than the nothing the tool had kept.
+    if (amount_low_rupees is None) != (amount_high_rupees is None):
+        return await _fail(params, "give both amount_low_rupees and amount_high_rupees, or amount_rupees")
+    if (day_earliest is None) != (day_latest is None):
+        return await _fail(params, "give both day_earliest and day_latest, or day_of_month")
+    if amount_rupees is None and amount_low_rupees is not None and amount_low_rupees == amount_high_rupees:
+        amount_rupees, amount_low_rupees, amount_high_rupees = amount_low_rupees, None, None
+    if day_of_month is None and day_earliest is not None and day_earliest == day_latest:
+        day_of_month, day_earliest, day_latest = day_earliest, None, None
 
     fact_id = session.new_fact_id(label)
     session.record(

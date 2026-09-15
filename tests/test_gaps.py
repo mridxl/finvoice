@@ -80,6 +80,20 @@ def test_saying_you_have_none_settles_a_category_for_good():
     assert "cards" in gaps  # never asked about, so still open
 
 
+def test_what_goes_out_is_swept_before_what_comes_in():
+    # Salary and rent recorded, nothing closed. The eval asked next about
+    # income, because that is the first category; a rent with nothing beside it
+    # is the more dangerous omission, and the sweep should go there first.
+    log = [
+        fact("salary", "income", "Salary", 52_000, day=25),
+        fact("rent", "essential", "Rent", 14_000, day=5),
+        NothingFurther("loan_emi"),
+        NothingFurther("credit_card"),
+    ]
+    order = [g.fact_id for g in rank_gaps(fold(log), AS_OF) if g.field == "completeness"]
+    assert order == ["essentials", "money_in"]
+
+
 def test_one_rent_is_not_the_same_as_knowing_what_the_month_costs():
     # The second demo: salary and "thirty three thousand for rent electricity",
     # then a plan announcing forty two thousand left over. No food, no travel, no

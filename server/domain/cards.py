@@ -14,7 +14,7 @@ from datetime import date
 from server.domain.events import Fact
 from server.domain.gaps import Gap
 from server.domain.money import Money, format_rupees, speak_rupees
-from server.domain.planner import Action, PlanOutcome
+from server.domain.planner import Action, LedgerRow, PlanOutcome
 from server.domain.state import FinancialState
 
 TITLES = {
@@ -93,7 +93,7 @@ def _fact(state: FinancialState, fact: Fact) -> dict:
     }
 
 
-def _day(row) -> dict:
+def _day(row: LedgerRow) -> dict:
     net = sum(e.amount for e in row.entries)
     return {
         "on": _iso(row.on),
@@ -103,7 +103,7 @@ def _day(row) -> dict:
     }
 
 
-def _row(row) -> dict:
+def _row(row: LedgerRow) -> dict:
     return {
         "on": _iso(row.on),
         "entries": [

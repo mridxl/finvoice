@@ -105,6 +105,38 @@ def test_a_range_is_carried_as_an_estimate_rather_than_a_midpoint():
     assert fact.amount_bounds.high == from_rupees(2_400)
 
 
+def test_a_range_whose_ends_meet_is_recorded_as_the_figure_it_is():
+    # "About two thousand two hundred" came in as 2200-2200 and was recorded as
+    # no amount at all; the model then read back the figure from memory.
+    session = Session(as_of=AS_OF)
+    result = call(
+        record_money_fact, session, kind="cash_on_hand", label="In the account",
+        amount_low_rupees=2_200, amount_high_rupees=2_200,
+    )
+    fact = session.state().get("in_the_account")
+    assert fact.amount == from_rupees(2_200)
+    assert fact.amount_bounds is None
+    assert "two thousand two hundred" in result["read_back"]
+
+
+def test_a_range_with_one_end_is_refused_rather_than_dropped():
+    # "Usually near the tenth, sometimes later" came in as earliest=10 with no
+    # latest, was recorded with no day, and the model invented the thirty-first.
+    session = Session(as_of=AS_OF)
+    result = call(
+        record_money_fact, session, kind="income", label="Wife's income",
+        amount_rupees=12_000, day_earliest=10,
+    )
+    assert "day_latest" in result["error"]
+    assert session.state().facts == ()
+    result = call(
+        record_money_fact, session, kind="income", label="Wife's income",
+        amount_rupees=12_000, amount_low_rupees=10_000,
+    )
+    assert "amount_high_rupees" in result["error"]
+    assert session.state().facts == ()
+
+
 def test_two_things_with_the_same_name_get_different_ids():
     session = Session(as_of=AS_OF)
     first = call(record_money_fact, session, kind="credit_card", label="Card minimum", amount_rupees=2_100)
