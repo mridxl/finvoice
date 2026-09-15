@@ -23,7 +23,7 @@ from datetime import date
 from typing import Literal
 
 from server.domain.events import Bounds, Fact, Kind
-from server.domain.money import format_rupees, from_rupees
+from server.domain.money import from_rupees, speak_rupees
 from server.domain.planner import Action, PlanOutcome, plan
 from server.domain.state import FinancialState
 
@@ -266,7 +266,7 @@ def _classify(low: PlanOutcome, high: PlanOutcome) -> tuple[Impact, str] | None:
         return "high", "it changes which payments go unmet"
     swing = abs(low.lowest - high.lowest)
     if swing >= MATERIAL:
-        return "medium", f"it moves the tightest point of the month by {format_rupees(swing)}"
+        return "medium", f"it moves the tightest point of the month by {speak_rupees(swing)}"
     if _ids(low.cuts) != _ids(high.cuts):
         return "low", "it only changes what gets trimmed"
     return None

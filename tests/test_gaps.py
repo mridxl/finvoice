@@ -44,6 +44,25 @@ def test_a_range_that_changes_nothing_is_not_asked_about():
     assert "gas" not in {g.fact_id for g in gaps}
 
 
+def test_the_reason_speaks_its_amount_instead_of_printing_it():
+    # `why` reaches the model as `why_it_matters` and gets said out loud, so the
+    # one branch that carries a figure has to carry it in words. Digit grouping
+    # belongs to the cards.
+    log = [
+        fact("cash", "cash_on_hand", "Cash on hand", 50_000),
+        fact("salary", "income", "Salary", 40_000, day=1),
+        FactRecorded(
+            Fact("rent", "essential", "Rent", from_rupees(10_000), day=5,
+                 amount_bounds=Bounds(from_rupees(8_000), from_rupees(13_000)))
+        ),
+        *SWEPT,
+    ]
+    gap = rank_gaps(fold(log), AS_OF)[0]
+    assert gap.impact == "medium"
+    assert "five thousand rupees" in gap.why
+    assert not any(c.isdigit() for c in gap.why)
+
+
 def test_nothing_left_to_ask_is_an_empty_ranking():
     # The stopping criterion has two halves. No remaining unknown moves the
     # outcome, *and* every category has been closed off by the user — TIMING_TRAP
