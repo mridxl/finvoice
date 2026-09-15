@@ -21,8 +21,18 @@ def make_stt():
     """Streaming speech-to-text."""
     if config.stt_provider == "deepgram":
         from pipecat.services.deepgram.stt import DeepgramSTTService
+        from pipecat.transcriptions.language import Language
 
-        return DeepgramSTTService(api_key=config.deepgram_api_key)
+        return DeepgramSTTService(
+            api_key=config.deepgram_api_key,
+            settings=DeepgramSTTService.Settings(
+                # Indian English on the same nova-3 model, with the words this
+                # conversation cannot afford to mishear boosted by name. The
+                # service default is plain "en".
+                language=Language.EN_IN,
+                keyterm=["lakh", "crore", "EMI", "rupees"],
+            ),
+        )
     if config.stt_provider == "openai":
         from pipecat.services.openai.stt import OpenAISTTService
 
