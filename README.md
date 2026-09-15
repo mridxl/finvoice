@@ -5,9 +5,11 @@ loans, income landing on different dates, and usually less money than the month 
 
 Built on [Pipecat](https://pipecat.ai) and [Daily](https://daily.co).
 
-> **Current state:** the planner, the agent, its tools and its prompt are in place, and
-> the pipeline can be driven as text through the eval harness. Audio is not wired up yet —
-> the app serves a status page and reports its provider configuration at `/api/health`.
+> **Current state:** the planner, the agent, its tools and its prompt are in place, and the
+> pipeline runs as a real voice call over Daily — the browser connects, the assistant joins
+> the room, speaks, and the conversation is transcribed live on screen. The same pipeline
+> still runs as text through the eval harness. The cards are not built yet, so the screen
+> shows the transcript rather than the plan taking shape beside it.
 
 ---
 
@@ -18,7 +20,9 @@ cp .env.example .env      # fill in the API keys
 docker compose up --build
 ```
 
-Open <http://localhost:8080>.
+Open <http://localhost:8080>, press **Connect**, and allow the microphone when the browser
+asks. The server mints a Daily room per call and puts the assistant in it; nothing about
+the room or the keys reaches the browser beyond a join token that is not an owner token.
 
 The first build takes a few minutes — it installs the Python tree, builds the frontend,
 and resolves the Smart Turn model weights so the first call doesn't block on them.
