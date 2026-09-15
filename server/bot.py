@@ -11,7 +11,7 @@ tools and the session, and the session owns everything that is true.
 
 import logging
 
-from pipecat.frames.frames import LLMRunFrame
+from pipecat.frames.frames import LLMConfigureOutputFrame, LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -69,8 +69,17 @@ def build_pipeline(transport, session: Session) -> Pipeline:
     )
 
 
-async def run_bot(transport, session: Session) -> None:
-    """Run one call to completion. Returns when the pipeline ends."""
+async def run_bot(transport, session: Session, *, speech: bool = True) -> None:
+    """Run one call to completion. Returns when the pipeline ends.
+
+    `speech=False` never synthesises a word, and it is said here rather than
+    left to the eval transport for a reason. The harness does ask for text mode
+    on connect, but that request enters the pipeline below the worker's own
+    RTVI processor, which keeps a mirror of the setting it never saw and
+    "restores" speech on the first user turn. Every reply after the greeting
+    then went to Cartesia and straight into the bin — sixteen minutes of it
+    before anyone looked. Queued from above, the same frame passes the mirror.
+    """
     worker = PipelineWorker(build_pipeline(transport, session), app_resources=session)
     # Cards reach the browser as RTVI server messages over the same data channel
     # the call uses, so a card can never arrive from a different state than the
@@ -87,7 +96,8 @@ async def run_bot(transport, session: Session) -> None:
         worker's task group keeps that path short either way.
         """
         log.info("client connected; opening the conversation")
-        worker.create_task(worker.queue_frames([LLMRunFrame()]))
+        opening = [LLMRunFrame()] if speech else [LLMConfigureOutputFrame(skip_tts=True), LLMRunFrame()]
+        worker.create_task(worker.queue_frames(opening))
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client):

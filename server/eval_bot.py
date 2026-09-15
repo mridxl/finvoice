@@ -21,6 +21,7 @@ from datetime import date
 from loguru import logger
 from pipecat.evals.serializer import EvalSerializer
 from pipecat.evals.transport import EvalTransport, EvalTransportParams
+from pipecat.utils.prewarm import warm_deferred_imports
 
 from server.bot import run_bot
 from server.config import config
@@ -44,6 +45,12 @@ def main() -> None:
     logger.remove()
     logger.add(sys.stderr, level=config.log_level)
 
+    # Same reason as `main.py`'s lifespan, worse odds: the suite spawns four of
+    # these at once, and on a cold machine four warm-ups racing one another
+    # missed the harness's ten-second bot-ready window on every scenario in the
+    # first batch. Here, before listening, nothing is timing us.
+    warm_deferred_imports()
+
     transport = EvalTransport(
         params=EvalTransportParams(
             audio_in_enabled=True,
@@ -53,7 +60,8 @@ def main() -> None:
         host=args.host,
         port=args.port,
     )
-    asyncio.run(run_bot(transport, Session(as_of=args.as_of)))
+    # Text in, text out: nothing here is ever heard, so nothing is synthesised.
+    asyncio.run(run_bot(transport, Session(as_of=args.as_of), speech=False))
 
 
 if __name__ == "__main__":
