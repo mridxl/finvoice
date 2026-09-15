@@ -70,7 +70,7 @@ def test_the_actions_card_separates_a_cut_from_a_missed_payment():
     assert body["unpaid"][0]["reason"]
 
 
-def test_the_ledger_card_is_the_arithmetic_a_reviewer_can_check():
+def test_the_ledger_card_is_the_arithmetic_anyone_can_check():
     rows = cards_for(GOLDEN)["ledger"]["body"]["rows"]
     assert len(rows) == 30
     assert rows[0]["on"] == "2026-09-01"
