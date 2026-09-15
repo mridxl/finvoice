@@ -21,6 +21,9 @@ docker compose up --build
 
 Open <http://localhost:8080>, press **Connect**, and allow the microphone.
 
+Before that, <http://localhost:8080/api/health> says whether the server is happy: `status`
+is `ok`, or `needs-config` with `missing_env` and `misconfigured` naming exactly what to fix.
+
 The first build takes a few minutes: it installs the Python tree, builds the frontend, and
 bakes in the Smart Turn model so no call waits on a download.
 

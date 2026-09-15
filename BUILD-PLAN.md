@@ -429,9 +429,10 @@ what-works/what-doesn't list.
 **Exit:** submittable.
 
 ### Phase 6 — Optional track
-Decide A or B **after** Phase 5. Track B is cheaper given Pipecat Evals is already
-wired; Track A is partly satisfied for free by gap ranking and Smart Turn. Open
-decision, per SPEC §11.
+**Track B.** Decided 2026-09-15, the day the suite went 0/9 → 9/9 and every step of that
+was a named cause with a commit: `evals/RESULTS.md`. Track A's behaviours are all built —
+the sweep, the anchors, the conflict flow, the comprehension check — but A asks to *show
+real conversations*, and B asks for exactly the artefact the suite already is.
 
 ---
 
@@ -442,7 +443,7 @@ PORT=8080
 
 DAILY_API_KEY=            # required. server-side only, never sent to browser
 
-LLM_PROVIDER=openai       # openai | google — see SPEC §11, decision open
+LLM_PROVIDER=openai       # openai | google
 STT_PROVIDER=deepgram
 TTS_PROVIDER=cartesia
 

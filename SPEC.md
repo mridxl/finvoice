@@ -239,4 +239,4 @@ Settled for this build.
 | # | Question | Blocked on |
 |---|---|---|
 | A | STT / TTS / LLM providers | Cost-at-scale vs latency vs reviewer key friction |
-| B | Optional track A or B | Decide after the core journey is polished |
+| B | Optional track A or B | **Track B**, 2026-09-15 — see `evals/RESULTS.md` and BUILD-PLAN §6 |
