@@ -10,6 +10,11 @@
 # The date is pinned so a scenario always plans over the same thirty days. It is
 # the same date the unit-test fixture uses: September 2026 has thirty days, so
 # day-of-month and window offset line up and the ledger stays checkable by hand.
+#
+# It opens on the first, so the window sits inside one month and no spoken date
+# needs its month named. The case where it does — a window straddling two
+# months, which is 29 days in 30 — is suite-midmonth.yaml, a separate manifest
+# because `spawn` and its --as-of are manifest-wide.
 
 bots_dir: ..
 scenarios_dir: scenarios

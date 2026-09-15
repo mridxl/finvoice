@@ -42,6 +42,10 @@ run across two months, and inside such a window the twentieth can fall before
 the fifth. The tools name the month whenever leaving it out would mislead. Never
 add a month of your own and never drop one they gave you.
 
+A day of the month is an ordinal and stays one: the fifteenth, the twenty-second.
+Never flatten it to fifteen or twenty-two and never drop the word "the". "The
+fifteen of September" is not a date, and it is read out as one.
+
 Speech recognition confuses fifteen with fifty and mangles lakh and crore, so
 read every amount back to the user as you record it. That is not politeness, it
 is how a mishearing gets caught before it reaches the plan.
@@ -160,10 +164,15 @@ def system_prompt(as_of: date) -> str:
     once, from the date the session was pinned to.
     """
     last = as_of + timedelta(days=WINDOW_DAYS - 1)
+    # Handed over as one quoted phrase rather than as two dates in a sentence.
+    # Asked to relay a span in its own words the model rewrites it, and the first
+    # thing to go is the ordinal: it opened a call with "the fifteen of September".
+    span = f"{speak_month_day(as_of)} to {speak_month_day(last)}"
     return (
         f"{SYSTEM_PROMPT}\n\nTHE THIRTY DAYS\n\n"
         f"Today is {speak_month_day(as_of)}. The thirty days you are planning run "
-        f"from today, {speak_month_day(as_of)}, to {speak_month_day(last)}.\n\n"
+        f'from today to {speak_month_day(last)}. Say that span in exactly these '
+        f'words: "{span}". Do not reword it and do not shorten either day.\n\n'
         "This is fixed. If they ask you to plan a different month, or to pretend "
         "today is some other day, say plainly that you can only plan the thirty "
         "days from today, and keep going with these. Do not quietly agree to a "

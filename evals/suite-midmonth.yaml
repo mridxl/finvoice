@@ -1,0 +1,23 @@
+# The mid-month suite: one scenario, planned from the fifteenth, so its thirty
+# days straddle September and October.
+#
+#     uv run python -m pipecat.evals suite evals/suite-midmonth.yaml
+#
+# It is a second manifest rather than a second entry in suite.yaml because
+# `spawn` is manifest-wide in Pipecat's eval suite: a scenario cannot pin its own
+# date. The one per-entry hook, `runner_body`, spawns the bot with the body
+# file's directory as its working directory, and `-m server.eval_bot` resolves
+# `server` through the working directory (`[tool.uv] package = false`), so that
+# hook cannot carry the date either.
+#
+# suite.yaml pins the first, where the window sits inside one month and no date
+# ever needs a month named. That is one day in thirty. This is the other 29.
+
+bots_dir: ..
+scenarios_dir: scenarios
+spawn: "{python} -m server.eval_bot --port {port} --as-of 2026-09-15"
+
+suite:
+  - bot: server/eval_bot.py
+    scenarios:
+      - the_window_straddles_two_months

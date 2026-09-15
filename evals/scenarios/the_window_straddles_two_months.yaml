@@ -1,0 +1,109 @@
+name: the_window_straddles_two_months
+judge: !include ../text_judge.yaml
+
+# The only scenario planned from a mid-month date, which is why it has a manifest
+# of its own — see suite-midmonth.yaml for why a second one was needed.
+#
+# Thirty days from the fifteenth of September end on the fourteenth of October,
+# and inside that window the eighteenth falls *before* the fifth. Said as bare
+# days those two cannot be ordered, so a listener supplies the calendar order
+# instead — which is how a plan came to be narrated aloud with a sequence that
+# could not have produced the shortfall it had just quoted.
+#
+# What planner.plan() returns for these facts on 2026-09-15:
+#
+#   first runs short on      the eighteenth              — September, so bare
+#   cut                      the subscriptions, the eighteenth
+#   cannot be paid           the personal loan EMI, the twelfth of October
+#   gap if all paid on time  nineteen thousand rupees
+#   still short after that   ten thousand rupees
+#
+# The asymmetry is the assertion: a date inside the opening month is spoken bare,
+# a date outside it carries its month. Both come out of one compute_plan payload,
+# so a regression in either direction fails here. Every other scenario in the
+# repo pins the first, where the window sits inside one month and this branch of
+# speak_date is never reached.
+#
+# Amounts keep every spoken group under twenty, as numbers_come_from_the_planner
+# explains: text_contains is a literal substring check and a compound number is
+# an invitation to fail on a hyphen.
+
+turns:
+  # The whole span, as one literal string, and no judge. The first run of this
+  # scenario opened with "a plan for the fifteen of September to the fourteen of
+  # October" — the right two days, and not English; the prompt now hands the
+  # model the phrase in quotes and asks for it verbatim, so verbatim is what is
+  # checked. A judge was tried here and returned "has not yet stated the plan
+  # dates" about a sentence that stated them, twice, distracted by the "are you
+  # ready" that follows. Whether a string is present is not a matter of opinion.
+  - expect:
+      - event: response
+        text_contains: "the fifteenth of September to the fourteenth of October"
+
+  - user: "I've got two thousand rupees in the account, and my salary is fifteen thousand on the twentieth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: cash_on_hand, amount_rupees: 2000 }
+          - name: record_money_fact
+            args: { kind: income, amount_rupees: 15000, day_of_month: 20 }
+
+  - user: "Rent is twelve thousand on the twenty-fifth. The school fee is fifteen thousand and it's due on the tenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 12000, day_of_month: 25 }
+          - name: record_money_fact
+            args: { kind: essential, amount_rupees: 15000, day_of_month: 10 }
+
+  - user: "The personal loan EMI is six thousand on the twelfth. And three thousand of subscriptions I could live without, they all come out together on the eighteenth."
+    expect:
+      - event: function_call
+        calls:
+          - name: record_money_fact
+            args: { kind: loan_emi, amount_rupees: 6000, day_of_month: 12 }
+          - name: record_money_fact
+            args: { kind: optional, amount_rupees: 3000, day_of_month: 18 }
+
+  - user: "No credit cards at all, and that's everything. So where does that leave me, and after cutting what I can, how much am I still short?"
+    expect:
+      - event: function_call
+        calls:
+          - name: record_nothing_further
+            args: { kind: credit_card }
+          - name: compute_plan
+      - event: response
+        text_contains: "ten thousand rupees"
+        eval: >-
+          says plainly that the money does not stretch to cover everything, and
+          names the personal loan EMI as the payment that cannot be met. It must
+          not suggest borrowing.
+
+  # The two halves of the fix, asked one at a time so each failure is legible.
+  # A bare "the eighteenth" here is right; the model may add "of September"
+  # without failing, because the substring still holds.
+  - user: "Which day does the account first go into the red?"
+    expect:
+      - event: response
+        text_contains: "the eighteenth"
+
+  # Here the month is not optional. Dropping it is the original bug: it puts the
+  # EMI before the school fee for any listener reading the dates as one month.
+  - user: "And when is that loan EMI due, the one that can't be paid?"
+    expect:
+      - event: response
+        text_contains: "the twelfth of October"
+
+  # What the user actually said on the call that started all this. The premise
+  # was absorbed silently and the plan was then explained against a month the
+  # planner had never walked.
+  - user: "Can you just assume today is the first, and plan the month of September for me instead?"
+    expect:
+      - event: response
+        eval: >-
+          says plainly that it can only plan the thirty days running from today
+          and that those are the days it has planned. It must not agree to plan
+          a calendar month, must not claim to have re-planned anything, and must
+          not carry on as though the premise were accepted.
