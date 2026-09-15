@@ -78,7 +78,7 @@ pipeline = Pipeline([
 
 `build_pipeline(transport, session)` takes the transport as a parameter so the same
 pipeline runs under `DailyTransport` in production and `EvalTransport` under
-`pipecat eval run`. **Never inline a transport into the pipeline builder** — that would
+`python -m pipecat.evals`. **Never inline a transport into the pipeline builder** — that would
 cost us the eval path.
 
 ---
@@ -96,7 +96,7 @@ cost us the eval path.
 ## Testing
 
 - `tests/` is rule-based and deterministic: no LLM, no network, no sleep.
-- `evals/scenarios/*.yaml` is LLM-judged behaviour via `pipecat eval run`.
+- `evals/scenarios/*.yaml` is LLM-judged behaviour via `python -m pipecat.evals`.
 - Keep those two separate: a substring check is not an opinion, and an opinion is not
   a substring check.
 - Every bug found by hand becomes a permanent test.
@@ -151,8 +151,11 @@ with `--no-dev`). Keep it that way.
 uv sync --group dev
 uv run pytest -q
 uv run ruff check .
-pipecat eval run evals/scenarios/*.yaml   # behavioural evals
+uv run python -m pipecat.evals suite evals/suite.yaml   # behavioural evals
 ```
+
+Run the evals with `python -m`, never the bare `pipecat` script: the judge lives in this
+repo at `evals/judge.py`, and only `-m` puts the working directory on the import path.
 
 On a Windows host, run these from a Linux environment (WSL or the equivalent) and point
 `UV_PROJECT_ENVIRONMENT` at a native Linux path — a venv is thousands of small files and
